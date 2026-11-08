@@ -47,10 +47,11 @@ application {
     applicationName = "bitchord-cli"
     applicationDefaultJvmArgs = listOf(
         "-Xms16m",
-        "-Xmx192m",
-        "-XX:+UseG1GC",
-        "-XX:G1PeriodicGCInterval=5000",
-        "-XX:G1PeriodicGCSystemLoadThreshold=0",
-        "-XX:+UseStringDeduplication",
+        "-Xmx128m",
+        "-XX:+UseSerialGC",
+        "-XX:TieredStopAtLevel=1",
+        "-Xss256k",
+        "-XX:ReservedCodeCacheSize=32m",
+        "-XX:MaxMetaspaceSize=64m",
     )
 }
