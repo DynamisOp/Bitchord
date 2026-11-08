@@ -107,8 +107,8 @@ class CliPlayer(
             try {
                 val streamUrl = try {
                     StreamResolver.resolve(song.videoId)
-                } catch (e: Exception) {
-                    _statusMessage.value = "Failed to resolve stream: ${e.message}"
+                } catch (e: Throwable) {
+                    _statusMessage.value = "Failed to resolve: ${e.message ?: e.javaClass.simpleName}"
                     _isBuffering.value = false
                     return@launch
                 }
@@ -120,7 +120,8 @@ class CliPlayer(
                 activeDecoder = newDecoder
                 decoder = newDecoder
 
-                val openRes = newDecoder.open(streamUrl)
+                val headers = StreamResolver.mediaHeadersFor(streamUrl)
+                val openRes = newDecoder.open(streamUrl, headers)
                 if (openRes.isFailure) {
                     _statusMessage.value = "Decoder error: ${openRes.exceptionOrNull()?.message}"
                     _isBuffering.value = false
@@ -186,8 +187,10 @@ class CliPlayer(
                 }
             } catch (e: CancellationException) {
                 // Task cancelled cleanly
-            } catch (e: Exception) {
-                _statusMessage.value = "Playback error: ${e.message}"
+            } catch (e: Throwable) {
+                _statusMessage.value = "Playback error: ${e.message ?: e.javaClass.simpleName}"
+                _isBuffering.value = false
+                _isPlaying.value = false
             } finally {
                 activeDecoder?.close()
                 if (decoder == activeDecoder) decoder = null

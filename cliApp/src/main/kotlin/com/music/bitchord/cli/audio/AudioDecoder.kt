@@ -86,7 +86,7 @@ class AudioDecoder : AutoCloseable {
             }
             seekPacket = seekCb
 
-            val avioBuffer = av_malloc(32768) as BytePointer
+            val avioBuffer = BytePointer(av_malloc(32768)).capacity(32768)
             val avioCtx = avio_alloc_context(avioBuffer, 32768, 0, null, readCb, null, seekCb)
                 ?: error("Failed to allocate AVIO context")
             avio = avioCtx
@@ -94,7 +94,7 @@ class AudioDecoder : AutoCloseable {
             container = avformat_alloc_context() ?: error("Failed to allocate format context")
             container.pb(avioCtx)
 
-            if (avformat_open_input(container, "", null, null) < 0) {
+            if (avformat_open_input(container, null as String?, null as org.bytedeco.ffmpeg.avformat.AVInputFormat?, null as org.bytedeco.ffmpeg.avutil.AVDictionary?) < 0) {
                 error("Could not open input stream via AVIO")
             }
         } else {
@@ -202,7 +202,10 @@ class AudioDecoder : AutoCloseable {
                     val buf = BytePointer(bufferSize.toLong())
                     outputBuffer = buf
                     outputBufferSamples = outSamples
-                    outputPlanes = PointerPointer<BytePointer>(buf)
+                    outputPlanes?.close()
+                    outputPlanes = PointerPointer<BytePointer>(1L).apply {
+                        put(0L, buf)
+                    }
                 }
 
                 val converted = swr_convert(

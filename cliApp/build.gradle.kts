@@ -10,6 +10,11 @@ val ffmpegVersion = "7.1.1-$javacppVersion"
 dependencies {
     implementation(project(":shared"))
 
+    // Stream extraction (NewPipe and JS engine)
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.3")
+    implementation("org.mozilla:rhino:1.8.1")
+    implementation("org.mozilla:rhino-engine:1.8.1")
+
     // Decoding and audio playback
     implementation("org.bytedeco:javacpp:$javacppVersion")
     implementation("org.bytedeco:javacpp:$javacppVersion:linux-x86_64")

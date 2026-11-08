@@ -4,16 +4,43 @@ import com.music.bitchord.cli.lyrics.CliLyrics
 import com.music.bitchord.cli.player.CliPlayer
 import com.music.bitchord.cli.ui.TuiRenderer
 import com.music.bitchord.cli.ui.TuiView
+import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.YtMusicRepository
+import com.music.bitchord.data.innertube.InnerTubeXResolver
+import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.SearchResult
 import kotlinx.coroutines.*
 import org.jline.terminal.Terminal
 import org.jline.terminal.TerminalBuilder
+import java.io.File
 import java.io.PrintWriter
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
+    // Initialize InnerTubeX and StreamResolver caches
+    val cacheDir = File(System.getProperty("user.home"), ".cache/bitchord-cli").apply { mkdirs() }
+    val logFile = File(cacheDir, "player.log")
+    TrackLog.echo = { level, tag, msg, err ->
+        runCatching {
+            logFile.appendText("[$level] $tag: $msg" + (err?.let { " - ${it.message}" } ?: "") + "\n")
+        }
+    }
+
+    InnerTubeXResolver.init(
+        filesDir = cacheDir,
+        store = object : InnerTubeXResolver.ConfigStore {
+            private val prefs = ConcurrentHashMap<String, String>()
+            override fun getString(key: String): String? = prefs[key]
+            override fun getLong(key: String): Long? = prefs[key]?.toLongOrNull()
+            override fun putString(key: String, value: String) { prefs[key] = value }
+            override fun putLong(key: String, value: Long) { prefs[key] = value.toString() }
+        },
+        poTokenProvider = null,
+    )
+    StreamResolver.maxKbps = { Int.MAX_VALUE }
+
     val terminal: Terminal = try {
         TerminalBuilder.builder()
             .system(true)
