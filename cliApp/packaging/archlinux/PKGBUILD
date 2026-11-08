@@ -15,7 +15,7 @@ optdepends=(
     'pulseaudio: PulseAudio output'
 )
 provides=('bitchord-cli')
-conflicts=('bitchord-cli-git')
+conflicts=('bitchord-cli-git' 'bitchord-desktop')
 
 build() {
     cd "$startdir/../../.."

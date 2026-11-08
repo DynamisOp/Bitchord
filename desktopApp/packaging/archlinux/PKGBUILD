@@ -19,7 +19,7 @@ optdepends=(
     'libappindicator-gtk3: System tray integration'
 )
 provides=('bitchord' 'bitchord-desktop' 'bitchord-cli')
-conflicts=('bitchord' 'bitchord-desktop-git')
+conflicts=('bitchord' 'bitchord-desktop-git' 'bitchord-cli')
 
 build() {
     cd "$startdir/../../.."
