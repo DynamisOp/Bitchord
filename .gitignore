@@ -51,6 +51,8 @@ AGENTS.md
 .jdk21/
 desktopApp/packaging/archlinux/pkg/
 desktopApp/packaging/archlinux/src/
+cliApp/packaging/archlinux/pkg/
+cliApp/packaging/archlinux/src/
 
 # Claude Code session files (launch configs, worktrees)
 .claude/

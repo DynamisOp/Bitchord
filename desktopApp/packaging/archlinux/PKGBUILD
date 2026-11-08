@@ -2,7 +2,7 @@
 pkgname=bitchord-desktop
 pkgver=1.9.1
 pkgrel=1
-pkgdesc="Aesthetic YouTube Music client for Linux with Liquid Glass & Low-End Potato Laptop Optimizations"
+pkgdesc="Aesthetic YouTube Music client for Linux with Liquid Glass & Ultra-Low Resource CLI/TUI"
 arch=('x86_64')
 url="https://github.com/kushagrasinghx/BitChord"
 license=('GPL-3.0-or-later')
@@ -18,7 +18,7 @@ optdepends=(
     'pulseaudio: PulseAudio output'
     'libappindicator-gtk3: System tray integration'
 )
-provides=('bitchord' 'bitchord-desktop')
+provides=('bitchord' 'bitchord-desktop' 'bitchord-cli')
 conflicts=('bitchord' 'bitchord-desktop-git')
 
 build() {
@@ -26,25 +26,32 @@ build() {
     export ANDROID_USER_HOME="/tmp/android-home"
     mkdir -p "$ANDROID_USER_HOME"
     # Build using Gradle and JDK 21
+    local gradle_cmd="./gradlew :desktopApp:createDistributable :cliApp:installDist"
     if [ -d "$startdir/../../../.jdk21" ]; then
-        JAVA_HOME="$startdir/../../../.jdk21" ./gradlew :desktopApp:createDistributable
+        JAVA_HOME="$startdir/../../../.jdk21" $gradle_cmd
     elif [ -d "/usr/lib/jvm/java-21-openjdk" ]; then
-        JAVA_HOME="/usr/lib/jvm/java-21-openjdk" ./gradlew :desktopApp:createDistributable
+        JAVA_HOME="/usr/lib/jvm/java-21-openjdk" $gradle_cmd
     else
-        ./gradlew :desktopApp:createDistributable
+        $gradle_cmd
     fi
 }
 
 package() {
     local app_dir="$startdir/../../../desktopApp/build/compose/binaries/main/app/BitChord"
+    local cli_dir="$startdir/../../../cliApp/build/install/bitchord-cli"
 
-    # Install main application bundle into /opt/bitchord
+    # Install main desktop application bundle into /opt/bitchord
     install -d "$pkgdir/opt/bitchord"
     cp -dr --no-preserve=ownership "$app_dir/." "$pkgdir/opt/bitchord/"
 
-    # Install binary launcher symlink into /usr/bin
+    # Install CLI application bundle into /opt/bitchord-cli
+    install -d "$pkgdir/opt/bitchord-cli"
+    cp -dr --no-preserve=ownership "$cli_dir/." "$pkgdir/opt/bitchord-cli/"
+
+    # Install binary launcher symlinks into /usr/bin
     install -d "$pkgdir/usr/bin"
     ln -s "/opt/bitchord/bin/BitChord" "$pkgdir/usr/bin/bitchord"
+    ln -s "/opt/bitchord-cli/bin/bitchord-cli" "$pkgdir/usr/bin/bitchord-cli"
 
     # Install desktop entry
     install -Dm644 "$startdir/bitchord.desktop" "$pkgdir/usr/share/applications/bitchord.desktop"

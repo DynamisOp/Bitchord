@@ -1,0 +1,42 @@
+# Maintainer: BitChord Linux Contributors
+pkgname=bitchord-cli
+pkgver=1.9.1
+pkgrel=1
+pkgdesc="Ultra-low resource TUI YouTube Music player with synced lyrics and Vim keybindings"
+arch=('x86_64')
+url="https://github.com/kushagrasinghx/BitChord"
+license=('GPL-3.0-or-later')
+depends=(
+    'java-runtime>=21'
+    'alsa-lib'
+)
+optdepends=(
+    'pipewire-pulse: PipeWire pulse audio output'
+    'pulseaudio: PulseAudio output'
+)
+provides=('bitchord-cli')
+conflicts=('bitchord-cli-git')
+
+build() {
+    cd "$startdir/../../.."
+    export ANDROID_USER_HOME="/tmp/android-home"
+    mkdir -p "$ANDROID_USER_HOME"
+    local gradle_cmd="./gradlew :cliApp:installDist"
+    if [ -d "$startdir/../../../.jdk21" ]; then
+        JAVA_HOME="$startdir/../../../.jdk21" $gradle_cmd
+    elif [ -d "/usr/lib/jvm/java-21-openjdk" ]; then
+        JAVA_HOME="/usr/lib/jvm/java-21-openjdk" $gradle_cmd
+    else
+        $gradle_cmd
+    fi
+}
+
+package() {
+    local cli_dir="$startdir/../../../cliApp/build/install/bitchord-cli"
+
+    install -d "$pkgdir/opt/bitchord-cli"
+    cp -dr --no-preserve=ownership "$cli_dir/." "$pkgdir/opt/bitchord-cli/"
+
+    install -d "$pkgdir/usr/bin"
+    ln -s "/opt/bitchord-cli/bin/bitchord-cli" "$pkgdir/usr/bin/bitchord-cli"
+}
