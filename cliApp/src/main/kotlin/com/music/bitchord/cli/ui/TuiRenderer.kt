@@ -11,6 +11,78 @@ enum class TuiView {
     QUEUE,
 }
 
+object AnsiUtils {
+    private val ANSI_REGEX = "\u001B\\[[;\\d]*[a-zA-Z]".toRegex()
+
+    fun stripAnsi(s: String): String = s.replace(ANSI_REGEX, "")
+
+    fun visualWidth(s: String): Int {
+        val clean = stripAnsi(s)
+        var w = 0
+        var i = 0
+        while (i < clean.length) {
+            val cp = clean.codePointAt(i)
+            w += charWidth(cp)
+            i += Character.charCount(cp)
+        }
+        return w
+    }
+
+    private fun charWidth(cp: Int): Int {
+        return when {
+            cp in 0x200B..0x200F || cp in 0xFE00..0xFE0F -> 0
+            cp in 0x1F000..0x1FAFF -> 2
+            cp in 0x2300..0x23FF -> 2
+            cp in 0x1100..0x115F || cp in 0x2E80..0x9FFF || cp in 0xAC00..0xD7AF || cp in 0xF900..0xFAFF -> 2
+            cp in 0xFF01..0xFF60 || cp in 0xFFE0..0xFFE6 -> 2
+            else -> 1
+        }
+    }
+
+    fun padToWidth(s: String, targetWidth: Int): String {
+        val curW = visualWidth(s)
+        return if (curW < targetWidth) {
+            s + " ".repeat(targetWidth - curW)
+        } else {
+            s
+        }
+    }
+
+    fun clipToWidth(s: String, maxWidth: Int): String {
+        if (visualWidth(s) <= maxWidth) return s
+        val sb = StringBuilder()
+        var curW = 0
+        var inEscape = false
+        var i = 0
+        while (i < s.length) {
+            if (s[i] == '\u001B') {
+                inEscape = true
+                sb.append(s[i])
+                i++
+                continue
+            }
+            if (inEscape) {
+                sb.append(s[i])
+                if (s[i].isLetter()) inEscape = false
+                i++
+                continue
+            }
+            val cp = s.codePointAt(i)
+            val w = charWidth(cp)
+            if (curW + w > maxWidth) break
+            curW += w
+            sb.appendCodePoint(cp)
+            i += Character.charCount(cp)
+        }
+        sb.append("\u001B[0m")
+        return sb.toString()
+    }
+
+    fun fitToWidth(s: String, width: Int): String {
+        return padToWidth(clipToWidth(s, width), width)
+    }
+}
+
 class TuiRenderer(
     private val terminal: Terminal,
     private val player: CliPlayer,
@@ -27,20 +99,20 @@ class TuiRenderer(
     var isSearchingNetwork: Boolean = false
 
     fun render() {
-        val width = terminal.width.coerceAtLeast(80)
-        val height = terminal.height.coerceAtLeast(24)
+        val size = terminal.size
+        val width = if (size.columns > 0) size.columns else 80
+        val height = if (size.rows > 0) size.rows else 24
 
-        val sb = StringBuilder()
-        // Cursor to top-left
-        sb.append("\u001B[H")
+        val rows = ArrayList<String>(height)
 
-        // 1. Header (2 lines)
-        renderHeader(sb, width)
+        // 1. Header (2 rows: title + tabs, horizontal border)
+        rows.add(buildHeader(width))
+        rows.add("\u001B[90m" + "─".repeat((width - 2).coerceAtLeast(10)) + "\u001B[0m")
 
-        // 2. Body (height - 6 lines)
-        val bodyHeight = (height - 6).coerceAtLeast(10)
-        val leftWidth = (width / 2) - 1
-        val rightWidth = width - leftWidth - 1
+        // 2. Body (height - 6 rows)
+        val bodyHeight = (height - 6).coerceAtLeast(4)
+        val leftWidth = ((width - 3) / 2).coerceAtLeast(10)
+        val rightWidth = (width - 2 - leftWidth - 1).coerceAtLeast(10)
 
         val leftLines = renderLeftPane(leftWidth, bodyHeight)
         val rightLines = renderRightPane(rightWidth, bodyHeight)
@@ -48,42 +120,58 @@ class TuiRenderer(
         for (row in 0 until bodyHeight) {
             val left = leftLines.getOrElse(row) { "".padEnd(leftWidth) }
             val right = rightLines.getOrElse(row) { "".padEnd(rightWidth) }
-            sb.append(left)
-            sb.append("\u001B[90m│\u001B[0m")
-            sb.append(right)
-            sb.append("\u001B[K\n")
+            rows.add("$left \u001B[90m│\u001B[0m $right")
         }
 
-        // 3. Footer / Player HUD (4 lines)
-        renderFooter(sb, width)
+        // 3. Footer (4 rows: separator, track info, progress bar, keybindings)
+        rows.add("\u001B[90m" + "─".repeat((width - 2).coerceAtLeast(10)) + "\u001B[0m")
+        rows.add(buildTrackInfo(width))
+        rows.add(buildProgressBar(width))
+        rows.add(buildKeybinds(width))
+
+        // Position line-by-line using absolute cursor coordinates with NO newline \n
+        val sb = StringBuilder()
+        sb.append("\u001B[?25l") // Ensure cursor remains hidden
+        for (i in 0 until height) {
+            sb.append("\u001B[").append(i + 1).append(";1H")
+            if (i < rows.size) {
+                sb.append(rows[i])
+            }
+            sb.append("\u001B[K") // Clear to end of line
+        }
 
         writer.print(sb.toString())
         writer.flush()
     }
 
-    private fun renderHeader(sb: StringBuilder, width: Int) {
-        val title = " \u001B[1;36m🎵 BITCHORD TUI\u001B[0m \u001B[90m[v1.9.1 - Ultra-Low Resource Linux Edition]\u001B[0m"
-        val viewTabs = if (currentView == TuiView.SEARCH) {
-            "\u001B[1;7;32m [1] SEARCH \u001B[0m \u001B[90m [2] QUEUE (${player.queue.size}) \u001B[0m"
+    private fun buildHeader(width: Int): String {
+        val title = if (width >= 96) {
+            " \u001B[1;36m🎵 BITCHORD TUI\u001B[0m \u001B[90m[v1.9.1 - Ultra-Low-Resource Linux Edition]\u001B[0m"
+        } else if (width >= 80) {
+            " \u001B[1;36m🎵 BITCHORD TUI\u001B[0m \u001B[90m[v1.9.1]\u001B[0m"
         } else {
-            "\u001B[90m [1] SEARCH \u001B[0m \u001B[1;7;32m [2] QUEUE (${player.queue.size}) \u001B[0m"
+            " \u001B[1;36m🎵 BITCHORD\u001B[0m"
         }
-        sb.append(title)
-        val plainLen = 15 + 44
-        val tabLen = 28
-        val spacing = (width - plainLen - tabLen).coerceAtLeast(1)
-        sb.append(" ".repeat(spacing))
-        sb.append(viewTabs)
-        sb.append("\u001B[K\n")
 
-        sb.append("\u001B[90m" + "─".repeat(width) + "\u001B[0m\u001B[K\n")
+        val queueCount = player.queue.size
+        val viewTabs = if (currentView == TuiView.SEARCH) {
+            "\u001B[1;7;32m [1] SEARCH \u001B[0m \u001B[90m [2] QUEUE ($queueCount) \u001B[0m"
+        } else {
+            "\u001B[90m [1] SEARCH \u001B[0m \u001B[1;7;32m [2] QUEUE ($queueCount) \u001B[0m"
+        }
+
+        val titleW = AnsiUtils.visualWidth(title)
+        val tabsW = AnsiUtils.visualWidth(viewTabs)
+        val spacing = (width - 1 - titleW - tabsW).coerceAtLeast(1)
+
+        val combined = title + " ".repeat(spacing) + viewTabs
+        return AnsiUtils.fitToWidth(combined, width - 1)
     }
 
     private fun renderLeftPane(width: Int, height: Int): List<String> {
         val lines = mutableListOf<String>()
 
         if (currentView == TuiView.SEARCH) {
-            // Search Input Header
             val promptPrefix = if (isSearchingInput) {
                 "\u001B[1;33mSearch: \u001B[0;37m$searchQuery\u001B[7m \u001B[0m"
             } else if (isSearchingNetwork) {
@@ -93,17 +181,16 @@ class TuiRenderer(
             } else {
                 "\u001B[90mPress / to search songs on YouTube Music\u001B[0m"
             }
-            lines.add(padAnsi(promptPrefix, width))
-            lines.add("\u001B[90m" + "┄".repeat(width) + "\u001B[0m")
+            lines.add(AnsiUtils.fitToWidth(promptPrefix, width))
+            lines.add("\u001B[90m" + "┄".repeat((width - 1).coerceAtLeast(5)) + "\u001B[0m")
 
             val listRows = height - 2
             if (searchResults.isEmpty()) {
-                lines.add(padAnsi("  \u001B[90mNo search results. Press / to search.\u001B[0m", width))
+                lines.add(AnsiUtils.fitToWidth("  \u001B[90mNo search results. Press / to search.\u001B[0m", width))
                 while (lines.size < height) lines.add("".padEnd(width))
                 return lines
             }
 
-            // Scroll window
             val selected = selectedSearchIndex.coerceIn(0, searchResults.size - 1)
             val startIdx = (selected - listRows / 2).coerceAtLeast(0)
                 .coerceAtMost((searchResults.size - listRows).coerceAtLeast(0))
@@ -115,24 +202,23 @@ class TuiRenderer(
                 val durPadding = if (duration.isNotBlank()) " [$duration]" else ""
                 val availableForTitle = (width - duration.length - 8).coerceAtLeast(10)
                 val fullTitle = "${song.title} - ${song.artist}"
-                val clipped = fullTitle.take(availableForTitle).padEnd(availableForTitle)
+                val clipped = fullTitle.take(availableForTitle)
 
                 val line = if (isSelected) {
                     "\u001B[1;7;36m > $clipped$durPadding \u001B[0m"
                 } else {
                     "   \u001B[37m$clipped\u001B[90m$durPadding\u001B[0m"
                 }
-                lines.add(padAnsi(line, width))
+                lines.add(AnsiUtils.fitToWidth(line, width))
             }
         } else {
-            // Queue View
-            lines.add(padAnsi(" \u001B[1;36mPlayback Queue (${player.queue.size} songs)\u001B[0m", width))
-            lines.add("\u001B[90m" + "┄".repeat(width) + "\u001B[0m")
+            lines.add(AnsiUtils.fitToWidth(" \u001B[1;36mPlayback Queue (${player.queue.size} songs)\u001B[0m", width))
+            lines.add("\u001B[90m" + "┄".repeat((width - 1).coerceAtLeast(5)) + "\u001B[0m")
 
             val listRows = height - 2
             val queue = player.queue
             if (queue.isEmpty()) {
-                lines.add(padAnsi("  \u001B[90mQueue is empty. Search songs and press Enter or 'a' to add.\u001B[0m", width))
+                lines.add(AnsiUtils.fitToWidth("  \u001B[90mQueue is empty. Search songs and press Enter or 'a' to add.\u001B[0m", width))
                 while (lines.size < height) lines.add("".padEnd(width))
                 return lines
             }
@@ -155,7 +241,7 @@ class TuiRenderer(
                 val durPadding = if (duration.isNotBlank()) " [$duration]" else ""
                 val availableForTitle = (width - duration.length - 8).coerceAtLeast(10)
                 val fullTitle = "${i + 1}. ${song.title} - ${song.artist}"
-                val clipped = fullTitle.take(availableForTitle).padEnd(availableForTitle)
+                val clipped = fullTitle.take(availableForTitle)
 
                 val line = if (isSelected) {
                     "\u001B[1;7;32m$prefix $clipped$durPadding \u001B[0m"
@@ -164,7 +250,7 @@ class TuiRenderer(
                 } else {
                     "$prefix \u001B[37m$clipped\u001B[90m$durPadding\u001B[0m"
                 }
-                lines.add(padAnsi(line, width))
+                lines.add(AnsiUtils.fitToWidth(line, width))
             }
         }
 
@@ -176,15 +262,15 @@ class TuiRenderer(
         val lines = mutableListOf<String>()
         val track = player.currentTrack.value
 
-        lines.add(padAnsi(" \u001B[1;35mSynced Lyrics\u001B[0m" + if (lyrics.isLoading.value) " \u001B[90m(loading...)\u001B[0m" else "", width))
-        lines.add("\u001B[90m" + "┄".repeat(width) + "\u001B[0m")
+        lines.add(AnsiUtils.fitToWidth(" \u001B[1;35mSynced Lyrics\u001B[0m" + if (lyrics.isLoading.value) " \u001B[90m(loading...)\u001B[0m" else "", width))
+        lines.add("\u001B[90m" + "┄".repeat((width - 1).coerceAtLeast(5)) + "\u001B[0m")
 
         val lyricRows = height - 2
         val allLyrics = lyrics.lines.value
         val curIdx = lyrics.currentIndex.value
 
         if (track == null) {
-            lines.add(padAnsi("  \u001B[90mNo track playing.\u001B[0m", width))
+            lines.add(AnsiUtils.fitToWidth("  \u001B[90mNo track playing.\u001B[0m", width))
             while (lines.size < height) lines.add("".padEnd(width))
             return lines
         }
@@ -195,7 +281,7 @@ class TuiRenderer(
             } else {
                 "  \u001B[90mNo synced lyrics found for this track.\u001B[0m"
             }
-            lines.add(padAnsi(msg, width))
+            lines.add(AnsiUtils.fitToWidth(msg, width))
             while (lines.size < height) lines.add("".padEnd(width))
             return lines
         }
@@ -209,7 +295,7 @@ class TuiRenderer(
         for (i in startIdx until minOf(allLyrics.size, startIdx + lyricRows)) {
             val lyric = allLyrics[i]
             val isActive = (i == curIdx)
-            val clippedText = lyric.text.take(width - 4)
+            val clippedText = lyric.text.take(width - 5)
 
             val line = if (isActive) {
                 " \u001B[1;36m▶ \u001B[1;7;36m $clippedText \u001B[0m"
@@ -218,22 +304,17 @@ class TuiRenderer(
             } else {
                 "   \u001B[37m$clippedText\u001B[0m"
             }
-            lines.add(padAnsi(line, width))
+            lines.add(AnsiUtils.fitToWidth(line, width))
         }
 
         while (lines.size < height) lines.add("".padEnd(width))
         return lines
     }
 
-    private fun renderFooter(sb: StringBuilder, width: Int) {
-        sb.append("\u001B[90m" + "─".repeat(width) + "\u001B[0m\u001B[K\n")
-
+    private fun buildTrackInfo(width: Int): String {
         val track = player.currentTrack.value
         val isPlaying = player.isPlaying.value
         val isBuffering = player.isBuffering.value
-        val posMs = player.positionMs.value
-        val durMs = player.durationMs.value
-        val volPct = (player.volume.value * 100).toInt()
 
         val stateIcon = when {
             isBuffering -> "\u001B[1;33m⏳ BUFFERING\u001B[0m"
@@ -249,44 +330,44 @@ class TuiRenderer(
         }
 
         val status = player.statusMessage.value?.let { " \u001B[33m[$it]\u001B[0m" } ?: ""
+        return AnsiUtils.fitToWidth(" $stateIcon  $trackInfo$status", width - 1)
+    }
 
-        sb.append(" $stateIcon  $trackInfo$status\u001B[K\n")
+    private fun buildProgressBar(width: Int): String {
+        val posMs = player.positionMs.value
+        val durMs = player.durationMs.value
+        val volPct = (player.volume.value * 100).toInt()
 
-        // Progress bar line
         val posSec = posMs / 1000
         val durSec = durMs / 1000
         val posStr = formatTime(posSec)
         val durStr = formatTime(durSec)
 
-        val barAvailable = (width - 24).coerceAtLeast(10)
+        val barAvailable = (width - 26).coerceAtLeast(10)
         val progress = if (durSec > 0) (posSec.toDouble() / durSec).coerceIn(0.0, 1.0) else 0.0
         val filled = (progress * barAvailable).toInt()
         val empty = (barAvailable - filled).coerceAtLeast(0)
         val bar = "\u001B[32m" + "━".repeat(filled) + "\u001B[90m" + "─".repeat(empty) + "\u001B[0m"
 
-        sb.append(" $posStr [$bar] $durStr  \u001B[90mVol: \u001B[37m$volPct%\u001B[0m\u001B[K\n")
-
-        // Keybinds bar
-        val keybinds = "\u001B[90m[Space]\u001B[37mPlay/Pause \u001B[90m[j/k]\u001B[37mNav \u001B[90m[Enter]\u001B[37mPlay \u001B[90m[a]\u001B[37mQueue \u001B[90m[n/p]\u001B[37mNext/Prev \u001B[90m[h/l]\u001B[37mSeek \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mView \u001B[90m[+/-]\u001B[37mVol \u001B[90m[q]\u001B[37mQuit\u001B[0m"
-        sb.append(padAnsi(" " + keybinds, width))
+        return AnsiUtils.fitToWidth(" $posStr [$bar] $durStr  \u001B[90mVol: \u001B[37m$volPct%\u001B[0m", width - 1)
     }
 
-    private fun padAnsi(str: String, width: Int): String {
-        val visibleLen = stripAnsi(str).length
-        val pad = (width - visibleLen).coerceAtLeast(0)
-        return str + " ".repeat(pad)
-    }
+    private fun buildKeybinds(width: Int): String {
+        val full = "\u001B[90m[Space]\u001B[37mPlay/Pause \u001B[90m[j/k]\u001B[37mNav \u001B[90m[Enter]\u001B[37mPlay \u001B[90m[a]\u001B[37mQueue \u001B[90m[n/p]\u001B[37mNext/Prev \u001B[90m[h/l]\u001B[37mSeek \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mView \u001B[90m[+/-]\u001B[37mVol \u001B[90m[q]\u001B[37mQuit\u001B[0m"
+        val compact = "\u001B[90m[Space]\u001B[37mPlay \u001B[90m[j/k]\u001B[37mNav \u001B[90m[Enter]\u001B[37mSelect \u001B[90m[a]\u001B[37mAdd \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mView \u001B[90m[+/-]\u001B[37mVol \u001B[90m[q]\u001B[37mQuit\u001B[0m"
+        val minimal = "\u001B[90m[Space]\u001B[37mPlay \u001B[90m[j/k]\u001B[37mNav \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mTab \u001B[90m[q]\u001B[37mQuit\u001B[0m"
 
-    private fun stripAnsi(s: String): String =
-        s.replace(ANSI_REGEX, "")
+        val binds = when {
+            width >= 105 -> full
+            width >= 85 -> compact
+            else -> minimal
+        }
+        return AnsiUtils.fitToWidth(" $binds", width - 1)
+    }
 
     private fun formatTime(sec: Long): String {
         val m = sec / 60
         val s = sec % 60
         return "%d:%02d".format(m, s)
-    }
-
-    companion object {
-        private val ANSI_REGEX = "\u001B\\[[;\\d]*m".toRegex()
     }
 }

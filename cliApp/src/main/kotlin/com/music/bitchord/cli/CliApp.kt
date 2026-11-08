@@ -53,8 +53,8 @@ fun main(args: Array<String>) {
     val prevAttributes = terminal.enterRawMode()
     val writer: PrintWriter = terminal.writer()
 
-    // Enter alternate screen buffer & hide cursor
-    writer.print("\u001B[?1049h\u001B[?25l")
+    // Enter alternate screen buffer, hide cursor, disable auto-wrap, clear screen & home cursor
+    writer.print("\u001B[?1049h\u001B[?25l\u001B[?7l\u001B[2J\u001B[H")
     writer.flush()
 
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -64,7 +64,8 @@ fun main(args: Array<String>) {
 
     fun restoreTerminal() {
         runCatching {
-            writer.print("\u001B[?25h\u001B[?1049l")
+            // Restore cursor, re-enable auto-wrap, exit alternate screen buffer
+            writer.print("\u001B[?25h\u001B[?7h\u001B[?1049l")
             writer.flush()
             terminal.attributes = prevAttributes
             terminal.close()
@@ -80,6 +81,15 @@ fun main(args: Array<String>) {
     val reader = terminal.reader()
     var running = true
     val dirty = java.util.concurrent.atomic.AtomicBoolean(true)
+
+    // Handle terminal resize (WINCH)
+    runCatching {
+        terminal.handle(Terminal.Signal.WINCH) {
+            writer.print("\u001B[2J\u001B[H")
+            writer.flush()
+            dirty.set(true)
+        }
+    }
 
     // State change observers to trigger re-renders immediately
     scope.launch { player.positionMs.collect { dirty.set(true) } }
