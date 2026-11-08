@@ -15,6 +15,8 @@ Designed for low-end hardware, Linux servers, SSH sessions, terminal multiplexer
 - **Queue Management**: Add songs to queue (`a`), view upcoming queue items (`Tab`), skip (`n` / `p`), and seek.
 - **Playback Controls**: Shuffle mode (`s`), repeat modes (`r`: Off, All, One), mute (`m`), and volume adjustment.
 - **Zero-Flicker TUI**: Direct terminal addressing with raw mode (JLine 3), absolute row drawing, and auto-wrap suppression for smooth rendering.
+- **Queue Minimization & Zen Mode**: Minimize the playback queue (`z` or `v`) to expand synced lyrics to full width.
+- **8 Built-in Color Themes**: Switch themes live (`t`) between Neon Cyberpunk, Catppuccin Mocha, Tokyo Night, Dracula, Nord Arctic, Emerald Matrix, Amber Sunset, and Classic 16-color ANSI with automatic preference persistence.
 
 ---
 
@@ -22,6 +24,9 @@ Designed for low-end hardware, Linux servers, SSH sessions, terminal multiplexer
 
 | Key | Action |
 |---|---|
+| `z` | Toggle Queue Minimization / Zen Fullscreen Lyrics mode |
+| `v` | Cycle layout modes (Split View ↔ Zen Lyrics ↔ Full Queue) |
+| `t` | Cycle color themes (Cyberpunk, Catppuccin, Tokyo Night, Dracula, Nord, Matrix, Amber, ANSI) |
 | `Space` | Play / Pause playback |
 | `j` / `k` or `Down` / `Up` | Navigate search results or queue items |
 | `Enter` | Play selected track |

@@ -2,6 +2,7 @@ package com.music.bitchord.cli
 
 import com.music.bitchord.cli.lyrics.CliLyrics
 import com.music.bitchord.cli.player.CliPlayer
+import com.music.bitchord.cli.ui.TuiLayout
 import com.music.bitchord.cli.ui.TuiRenderer
 import com.music.bitchord.cli.ui.TuiView
 import com.music.bitchord.data.TrackLog
@@ -258,10 +259,26 @@ fun main(args: Array<String>) {
                     'q'.code, 3 -> { // 'q' or Ctrl+C
                         running = false
                     }
+                    'z'.code -> { // Toggle queue minimization / Zen lyrics mode
+                        val isZen = renderer.toggleZenMode()
+                        val msg = if (isZen) "🪟 Queue Minimized (Zen Lyrics Mode) [press z to restore]" else "🪟 Split View Restored"
+                        player.setStatus(msg)
+                    }
+                    'v'.code -> { // Cycle layout modes (Split / Zen / Full Queue)
+                        val mode = renderer.cycleLayout()
+                        player.setStatus("🪟 Layout: ${mode.label}")
+                    }
+                    't'.code -> { // Cycle color themes
+                        val newTheme = renderer.cycleTheme()
+                        player.setStatus("🎨 Theme: ${newTheme.name}")
+                    }
                     '/'.code -> {
                         renderer.isSearchingInput = true
                         renderer.searchQuery = ""
                         renderer.currentView = TuiView.SEARCH
+                        if (renderer.layoutMode == TuiLayout.ZEN) {
+                            renderer.layoutMode = TuiLayout.SPLIT
+                        }
                     }
                     ' '.code -> {
                         player.togglePlayPause()
@@ -295,6 +312,9 @@ fun main(args: Array<String>) {
                         player.setStatus("Seek +15s")
                     }
                     9 -> { // Tab
+                        if (renderer.layoutMode == TuiLayout.ZEN) {
+                            renderer.layoutMode = TuiLayout.SPLIT
+                        }
                         renderer.currentView = if (renderer.currentView == TuiView.SEARCH) {
                             TuiView.QUEUE
                         } else {
@@ -302,9 +322,15 @@ fun main(args: Array<String>) {
                         }
                     }
                     '1'.code -> {
+                        if (renderer.layoutMode == TuiLayout.ZEN) {
+                            renderer.layoutMode = TuiLayout.SPLIT
+                        }
                         renderer.currentView = TuiView.SEARCH
                     }
                     '2'.code -> {
+                        if (renderer.layoutMode == TuiLayout.ZEN) {
+                            renderer.layoutMode = TuiLayout.SPLIT
+                        }
                         renderer.currentView = TuiView.QUEUE
                     }
                     'j'.code -> {
