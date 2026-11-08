@@ -2,6 +2,7 @@ package com.music.bitchord.cli.ui
 
 import com.music.bitchord.cli.lyrics.CliLyrics
 import com.music.bitchord.cli.player.CliPlayer
+import com.music.bitchord.cli.player.CliRepeatMode
 import com.music.bitchord.data.model.Song
 import org.jline.terminal.Terminal
 import java.io.PrintWriter
@@ -123,7 +124,7 @@ class TuiRenderer(
             rows.add("$left \u001B[90m│\u001B[0m $right")
         }
 
-        // 3. Footer (4 rows: separator, track info, progress bar, keybindings)
+        // 3. Footer (4 rows: separator, track info + visualizer, progress bar, keybindings)
         rows.add("\u001B[90m" + "─".repeat((width - 2).coerceAtLeast(10)) + "\u001B[0m")
         rows.add(buildTrackInfo(width))
         rows.add(buildProgressBar(width))
@@ -154,10 +155,17 @@ class TuiRenderer(
         }
 
         val queueCount = player.queue.size
+        val shufBadge = if (player.isShuffle.value) " \u001B[1;35m[🔀 SHUF]\u001B[0m" else ""
+        val repBadge = when (player.repeatMode.value) {
+            CliRepeatMode.ALL -> " \u001B[1;36m[🔁 ALL]\u001B[0m"
+            CliRepeatMode.ONE -> " \u001B[1;33m[🔂 ONE]\u001B[0m"
+            CliRepeatMode.OFF -> ""
+        }
+
         val viewTabs = if (currentView == TuiView.SEARCH) {
-            "\u001B[1;7;32m [1] SEARCH \u001B[0m \u001B[90m [2] QUEUE ($queueCount) \u001B[0m"
+            "\u001B[1;7;32m [1] SEARCH \u001B[0m \u001B[90m [2] QUEUE ($queueCount)$shufBadge$repBadge \u001B[0m"
         } else {
-            "\u001B[90m [1] SEARCH \u001B[0m \u001B[1;7;32m [2] QUEUE ($queueCount) \u001B[0m"
+            "\u001B[90m [1] SEARCH \u001B[0m \u001B[1;7;32m [2] QUEUE ($queueCount)$shufBadge$repBadge \u001B[0m"
         }
 
         val titleW = AnsiUtils.visualWidth(title)
@@ -173,20 +181,20 @@ class TuiRenderer(
 
         if (currentView == TuiView.SEARCH) {
             val promptPrefix = if (isSearchingInput) {
-                "\u001B[1;33mSearch: \u001B[0;37m$searchQuery\u001B[7m \u001B[0m"
+                "\u001B[1;33mSearch/URL: \u001B[0;37m$searchQuery\u001B[7m \u001B[0m"
             } else if (isSearchingNetwork) {
-                "\u001B[1;36mSearching YouTube Music for \"$searchQuery\"...\u001B[0m"
+                "\u001B[1;36mFetching from YouTube Music: \"$searchQuery\"...\u001B[0m"
             } else if (searchQuery.isNotBlank()) {
-                "\u001B[90mSearch (press / to edit): \u001B[37m$searchQuery\u001B[0m"
+                "\u001B[90mSearch (press / to edit or paste URL): \u001B[37m$searchQuery\u001B[0m"
             } else {
-                "\u001B[90mPress / to search songs on YouTube Music\u001B[0m"
+                "\u001B[90mPress / to search songs, playlists (p:), or paste YouTube link\u001B[0m"
             }
             lines.add(AnsiUtils.fitToWidth(promptPrefix, width))
             lines.add("\u001B[90m" + "┄".repeat((width - 1).coerceAtLeast(5)) + "\u001B[0m")
 
             val listRows = height - 2
             if (searchResults.isEmpty()) {
-                lines.add(AnsiUtils.fitToWidth("  \u001B[90mNo search results. Press / to search.\u001B[0m", width))
+                lines.add(AnsiUtils.fitToWidth("  \u001B[90mNo search results. Press / to search or paste a playlist.\u001B[0m", width))
                 while (lines.size < height) lines.add("".padEnd(width))
                 return lines
             }
@@ -212,13 +220,14 @@ class TuiRenderer(
                 lines.add(AnsiUtils.fitToWidth(line, width))
             }
         } else {
-            lines.add(AnsiUtils.fitToWidth(" \u001B[1;36mPlayback Queue (${player.queue.size} songs)\u001B[0m", width))
+            val qTitle = " \u001B[1;36mPlayback Queue (${player.queue.size} songs)\u001B[0m"
+            lines.add(AnsiUtils.fitToWidth(qTitle, width))
             lines.add("\u001B[90m" + "┄".repeat((width - 1).coerceAtLeast(5)) + "\u001B[0m")
 
             val listRows = height - 2
             val queue = player.queue
             if (queue.isEmpty()) {
-                lines.add(AnsiUtils.fitToWidth("  \u001B[90mQueue is empty. Search songs and press Enter or 'a' to add.\u001B[0m", width))
+                lines.add(AnsiUtils.fitToWidth("  \u001B[90mQueue is empty. Search songs or paste playlist URL.\u001B[0m", width))
                 while (lines.size < height) lines.add("".padEnd(width))
                 return lines
             }
@@ -262,7 +271,8 @@ class TuiRenderer(
         val lines = mutableListOf<String>()
         val track = player.currentTrack.value
 
-        lines.add(AnsiUtils.fitToWidth(" \u001B[1;35mSynced Lyrics\u001B[0m" + if (lyrics.isLoading.value) " \u001B[90m(loading...)\u001B[0m" else "", width))
+        val syncNotice = lyrics.offsetText.value?.let { " \u001B[33m(sync $it)\u001B[0m" } ?: ""
+        lines.add(AnsiUtils.fitToWidth(" \u001B[1;35mSynced Lyrics\u001B[0m$syncNotice" + if (lyrics.isLoading.value) " \u001B[90m(loading...)\u001B[0m" else "", width))
         lines.add("\u001B[90m" + "┄".repeat((width - 1).coerceAtLeast(5)) + "\u001B[0m")
 
         val lyricRows = height - 2
@@ -311,6 +321,16 @@ class TuiRenderer(
         return lines
     }
 
+    private fun renderVisualizer(bands: FloatArray): String {
+        val vizChars = charArrayOf(' ', ' ', '▂', '▃', '▄', '▅', '▆', '▇', '█')
+        val sb = StringBuilder()
+        for (b in bands) {
+            val idx = (b * 8).toInt().coerceIn(0, 8)
+            sb.append(vizChars[idx])
+        }
+        return sb.toString()
+    }
+
     private fun buildTrackInfo(width: Int): String {
         val track = player.currentTrack.value
         val isPlaying = player.isPlaying.value
@@ -329,8 +349,16 @@ class TuiRenderer(
             "\u001B[90mNothing playing\u001B[0m"
         }
 
+        val vizStr = if (isPlaying) {
+            " \u001B[1;36m♫ ${renderVisualizer(player.visualizerBands.value)}\u001B[0m"
+        } else {
+            ""
+        }
+
+        val codecInfo = player.streamInfo.value?.let { " \u001B[90m[$it]\u001B[0m" } ?: ""
         val status = player.statusMessage.value?.let { " \u001B[33m[$it]\u001B[0m" } ?: ""
-        return AnsiUtils.fitToWidth(" $stateIcon  $trackInfo$status", width - 1)
+
+        return AnsiUtils.fitToWidth(" $stateIcon  $trackInfo$vizStr$codecInfo$status", width - 1)
     }
 
     private fun buildProgressBar(width: Int): String {
@@ -343,23 +371,31 @@ class TuiRenderer(
         val posStr = formatTime(posSec)
         val durStr = formatTime(durSec)
 
-        val barAvailable = (width - 26).coerceAtLeast(10)
+        val volLabel = if (player.isMuted.value) "\u001B[1;31mMUTED\u001B[0m" else "\u001B[37m$volPct%\u001B[0m"
+        val shufTag = if (player.isShuffle.value) " \u001B[1;35m🔀\u001B[0m" else ""
+        val repTag = when (player.repeatMode.value) {
+            CliRepeatMode.ALL -> " \u001B[1;36m🔁\u001B[0m"
+            CliRepeatMode.ONE -> " \u001B[1;33m🔂\u001B[0m"
+            CliRepeatMode.OFF -> ""
+        }
+
+        val barAvailable = (width - 32).coerceAtLeast(10)
         val progress = if (durSec > 0) (posSec.toDouble() / durSec).coerceIn(0.0, 1.0) else 0.0
         val filled = (progress * barAvailable).toInt()
         val empty = (barAvailable - filled).coerceAtLeast(0)
         val bar = "\u001B[32m" + "━".repeat(filled) + "\u001B[90m" + "─".repeat(empty) + "\u001B[0m"
 
-        return AnsiUtils.fitToWidth(" $posStr [$bar] $durStr  \u001B[90mVol: \u001B[37m$volPct%\u001B[0m", width - 1)
+        return AnsiUtils.fitToWidth(" $posStr [$bar] $durStr$shufTag$repTag  \u001B[90mVol: $volLabel", width - 1)
     }
 
     private fun buildKeybinds(width: Int): String {
-        val full = "\u001B[90m[Space]\u001B[37mPlay/Pause \u001B[90m[j/k]\u001B[37mNav \u001B[90m[Enter]\u001B[37mPlay \u001B[90m[a]\u001B[37mQueue \u001B[90m[n/p]\u001B[37mNext/Prev \u001B[90m[h/l]\u001B[37mSeek \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mView \u001B[90m[+/-]\u001B[37mVol \u001B[90m[q]\u001B[37mQuit\u001B[0m"
-        val compact = "\u001B[90m[Space]\u001B[37mPlay \u001B[90m[j/k]\u001B[37mNav \u001B[90m[Enter]\u001B[37mSelect \u001B[90m[a]\u001B[37mAdd \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mView \u001B[90m[+/-]\u001B[37mVol \u001B[90m[q]\u001B[37mQuit\u001B[0m"
-        val minimal = "\u001B[90m[Space]\u001B[37mPlay \u001B[90m[j/k]\u001B[37mNav \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mTab \u001B[90m[q]\u001B[37mQuit\u001B[0m"
+        val full = "\u001B[90m[Space]\u001B[37mPlay \u001B[90m[j/k]\u001B[37mNav \u001B[90m[Enter]\u001B[37mSelect \u001B[90m[s]\u001B[37mShuf \u001B[90m[r]\u001B[37mRep \u001B[90m[m]\u001B[37mMute \u001B[90m[a]\u001B[37mQueue \u001B[90m[n/p]\u001B[37mNext/Prev \u001B[90m[h/l]\u001B[37m±5s \u001B[90m[H/L]\u001B[37m±15s \u001B[90m[[/]]\u001B[37mSync \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mView \u001B[90m[q]\u001B[37mQuit\u001B[0m"
+        val compact = "\u001B[90m[Space]\u001B[37mPlay \u001B[90m[j/k]\u001B[37mNav \u001B[90m[Enter]\u001B[37mSelect \u001B[90m[s]\u001B[37mShuf \u001B[90m[r]\u001B[37mRep \u001B[90m[m]\u001B[37mMute \u001B[90m[n/p]\u001B[37mTrack \u001B[90m[h/l]\u001B[37mSeek \u001B[90m[[/]]\u001B[37mSync \u001B[90m[/]\u001B[37mSearch \u001B[90m[q]\u001B[37mQuit\u001B[0m"
+        val minimal = "\u001B[90m[Space]\u001B[37mPlay \u001B[90m[j/k]\u001B[37mNav \u001B[90m[s]\u001B[37mShuf \u001B[90m[r]\u001B[37mRep \u001B[90m[/]\u001B[37mSearch \u001B[90m[Tab]\u001B[37mView \u001B[90m[q]\u001B[37mQuit\u001B[0m"
 
         val binds = when {
-            width >= 105 -> full
-            width >= 85 -> compact
+            width >= 115 -> full
+            width >= 88 -> compact
             else -> minimal
         }
         return AnsiUtils.fitToWidth(" $binds", width - 1)

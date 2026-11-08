@@ -5270,15 +5270,42 @@ private fun DesktopPageBackdrop(artworkUrl: String?, transparentBase: Boolean) {
             .fillMaxSize()
             .then(if (transparentBase) Modifier else Modifier.background(DesktopBackground)),
     ) {
-        if (artworkUrl == null) return@Box
+        if (artworkUrl == null) {
+            // Elegant deep liquid aurora mesh when idle so frosted glass chrome has luminescence & depth
+            Canvas(Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                // Soft deep sapphire at top-left
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFF162544), Color.Transparent),
+                        center = Offset(w * 0.15f, h * 0.2f),
+                        radius = (w + h) * 0.45f,
+                    ),
+                    center = Offset(w * 0.15f, h * 0.2f),
+                    radius = (w + h) * 0.45f,
+                )
+                // Soft deep violet / amethyst at bottom-right
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFF281236), Color.Transparent),
+                        center = Offset(w * 0.85f, h * 0.75f),
+                        radius = (w + h) * 0.50f,
+                    ),
+                    center = Offset(w * 0.85f, h * 0.75f),
+                    radius = (w + h) * 0.50f,
+                )
+            }
+            return@Box
+        }
         DesktopMesh(artworkUrl)
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
                     listOf(
-                        Color.Black.copy(alpha = 0.30f),
-                        Color.Black.copy(alpha = 0.72f),
-                        Color.Black.copy(alpha = 0.88f),
+                        Color.Black.copy(alpha = 0.12f),
+                        Color.Black.copy(alpha = 0.38f),
+                        Color.Black.copy(alpha = 0.62f),
                     ),
                 ),
             ),
@@ -7378,10 +7405,22 @@ private fun rememberPlayingRowMatcher(rows: List<Song>): (Song) -> Boolean {
     return remember(rows, current) { playingRowMatcher(rows, current) }
 }
 
+/** Specular top highlight gradient for floating glass pill rims */
+private val LiquidGlassPillBorder = Brush.verticalGradient(
+    listOf(
+        Color.White.copy(alpha = 0.28f),
+        Color.White.copy(alpha = 0.12f),
+        Color.White.copy(alpha = 0.05f),
+    )
+)
+
 /** The frosted pane the floating bars are made of. */
 @Composable
 internal fun Modifier.desktopBarGlass(shape: Shape): Modifier =
-    desktopFrosted(DesktopBarGlass, tintAlpha = 0.55f).border(0.5.dp, DesktopBarEdge, shape)
+    this
+        .shadow(elevation = 16.dp, shape = shape, spotColor = Color.Black.copy(alpha = 0.50f))
+        .desktopFrosted(DesktopBarGlass, tintAlpha = 0.32f)
+        .border(0.5.dp, LiquidGlassPillBorder, shape)
 
 /** The edge of a chrome pane that meets the page, and so has to dissolve into it. */
 internal enum class DesktopChromeEdge { NONE, BOTTOM, END }
@@ -7398,8 +7437,8 @@ internal fun Modifier.desktopChromeGlass(
     edge: DesktopChromeEdge = DesktopChromeEdge.NONE,
     fade: Float = 0.2f,
 ): Modifier = desktopFrosted(
-    opaque = DesktopSurface.copy(alpha = 0.88f),
-    tintAlpha = 0.46f,
+    opaque = DesktopSurface.copy(alpha = 0.76f),
+    tintAlpha = 0.30f,
     edge = edge,
     fade = fade,
 )
@@ -7419,10 +7458,28 @@ internal fun Modifier.desktopWindowGlass(
 ): Modifier {
     val backdrop by DesktopWindowBackdrop.active.collectAsState()
     return if (backdrop == DesktopBackdrop.OFF) {
-        desktopChromeGlass(edge, fade)
+        desktopChromeGlass(edge, fade).drawBehind {
+            if (edge == DesktopChromeEdge.BOTTOM) {
+                // Liquid glass specular highlight along the bottom divider
+                drawLine(
+                    color = Color.White.copy(alpha = 0.09f),
+                    start = Offset(0f, size.height - 1f),
+                    end = Offset(size.width, size.height - 1f),
+                    strokeWidth = 1f,
+                )
+            } else if (edge == DesktopChromeEdge.END) {
+                // Liquid glass specular highlight along the sidebar seam
+                drawLine(
+                    color = Color.White.copy(alpha = 0.09f),
+                    start = Offset(size.width - 1f, 0f),
+                    end = Offset(size.width - 1f, size.height),
+                    strokeWidth = 1f,
+                )
+            }
+        }
     } else {
         val base = background(Color.Black.copy(alpha = WINDOW_GLASS_TINT))
-        if (DesktopPlatform.isMac && edge == DesktopChromeEdge.BOTTOM) {
+        if (edge == DesktopChromeEdge.BOTTOM) {
             base.drawBehind {
                 // Subtle liquid glass specular highlight along the top edge
                 drawLine(

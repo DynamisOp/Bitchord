@@ -10,6 +10,7 @@ import com.music.bitchord.data.innertube.InnerTubeXResolver
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.SearchResult
+import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.*
 import org.jline.terminal.Terminal
 import org.jline.terminal.TerminalBuilder
@@ -95,37 +96,118 @@ fun main(args: Array<String>) {
     scope.launch { player.positionMs.collect { dirty.set(true) } }
     scope.launch { player.statusMessage.collect { dirty.set(true) } }
     scope.launch { player.isPlaying.collect { dirty.set(true) } }
+    scope.launch { player.repeatMode.collect { dirty.set(true) } }
+    scope.launch { player.isShuffle.collect { dirty.set(true) } }
+    scope.launch { player.isMuted.collect { dirty.set(true) } }
+    scope.launch { player.visualizerBands.collect { dirty.set(true) } }
     scope.launch { lyrics.lines.collect { dirty.set(true) } }
     scope.launch { lyrics.currentIndex.collect { dirty.set(true) } }
+    scope.launch { lyrics.offsetText.collect { dirty.set(true) } }
 
-    // Check if initial query passed via CLI arguments
-    if (args.isNotEmpty()) {
-        val initialQuery = args.joinToString(" ").trim()
-        if (initialQuery.isNotBlank()) {
-            renderer.searchQuery = initialQuery
+    fun performSearchOrLoad(input: String, autoPlay: Boolean = true) {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return
+
+        // 1. YouTube playlist URL or ID detection
+        val playlistRegex = "[?&]list=([a-zA-Z0-9_-]+)".toRegex()
+        val matchPlaylist = playlistRegex.find(trimmed)
+        val playlistId = matchPlaylist?.groupValues?.get(1)
+            ?: if (trimmed.startsWith("PL") || trimmed.startsWith("RDCLAK") || trimmed.startsWith("OLAK5uy_")) trimmed else null
+
+        if (playlistId != null) {
+            val browseId = if (playlistId.startsWith("VL")) playlistId else "VL$playlistId"
+            renderer.searchQuery = "Loading playlist $playlistId..."
             renderer.isSearchingNetwork = true
+            player.setStatus("Loading playlist: $playlistId...")
             scope.launch(Dispatchers.IO) {
-                val results = runCatching {
-                    YtMusicRepository.search(initialQuery, SearchFilter.SONGS)
-                }.getOrNull()?.getOrNull()
+                val songs = runCatching {
+                    YtMusicRepository.allSongs(browseId).getOrThrow()
+                }.getOrNull()
 
-                val tracks = results?.mapNotNull { item ->
-                    when (item) {
-                        is SearchResult.Track -> item.song
-                        is SearchResult.TopTrack -> item.song
-                        else -> null
-                    }
-                } ?: emptyList()
-
-                renderer.searchResults = tracks
-                renderer.selectedSearchIndex = 0
                 renderer.isSearchingNetwork = false
-
-                // If launched with query, auto-play first hit
-                if (tracks.isNotEmpty()) {
-                    player.playQueue(tracks, 0)
+                if (!songs.isNullOrEmpty()) {
+                    renderer.searchResults = songs
+                    renderer.selectedSearchIndex = 0
+                    renderer.currentView = TuiView.QUEUE
+                    if (autoPlay) {
+                        player.playQueue(songs, 0)
+                    } else {
+                        player.addAllToQueue(songs)
+                    }
+                    player.setStatus("Loaded playlist (${songs.size} tracks)")
+                } else {
+                    player.setStatus("Failed to load playlist (empty or private)")
                 }
             }
+            return
+        }
+
+        // 2. Direct video URL detection
+        val videoRegex = "(?:v=|/v/|youtu\\.be/|/shorts/)([a-zA-Z0-9_-]{11})".toRegex()
+        val matchVideo = videoRegex.find(trimmed)
+        if (matchVideo != null) {
+            val videoId = matchVideo.groupValues[1]
+            renderer.isSearchingNetwork = true
+            renderer.searchQuery = "Loading track $videoId..."
+            player.setStatus("Loading YouTube track...")
+            scope.launch(Dispatchers.IO) {
+                val song = runCatching {
+                    YtMusicRepository.trackLinks(videoId).getOrThrow()
+                }.getOrNull() ?: Song(
+                    videoId = videoId,
+                    title = "YouTube Track $videoId",
+                    artist = "YouTube",
+                    thumbnailUrl = null,
+                )
+
+                renderer.isSearchingNetwork = false
+                renderer.searchResults = listOf(song)
+                renderer.selectedSearchIndex = 0
+                if (autoPlay) {
+                    player.playQueue(listOf(song), 0)
+                } else {
+                    player.addToQueue(song)
+                }
+            }
+            return
+        }
+
+        // 3. Regular search or playlist search via "p:" / "playlist:"
+        val isPlaylistSearch = trimmed.startsWith("p:", ignoreCase = true) || trimmed.startsWith("playlist:", ignoreCase = true)
+        val actualQuery = if (isPlaylistSearch) trimmed.substringAfter(":").trim() else trimmed
+
+        renderer.isSearchingNetwork = true
+        renderer.currentView = TuiView.SEARCH
+        scope.launch(Dispatchers.IO) {
+            val results = runCatching {
+                val filter = if (isPlaylistSearch) SearchFilter.PLAYLISTS else SearchFilter.SONGS
+                YtMusicRepository.search(actualQuery, filter)
+            }.getOrNull()?.getOrNull()
+
+            val tracks = results?.mapNotNull { item ->
+                when (item) {
+                    is SearchResult.Track -> item.song
+                    is SearchResult.TopTrack -> item.song
+                    else -> null
+                }
+            } ?: emptyList()
+
+            renderer.searchResults = tracks
+            renderer.selectedSearchIndex = 0
+            renderer.isSearchingNetwork = false
+
+            if (autoPlay && tracks.isNotEmpty() && !isPlaylistSearch) {
+                player.playQueue(tracks, 0)
+            }
+        }
+    }
+
+    // Check if initial query or playlist URL passed via CLI arguments
+    if (args.isNotEmpty()) {
+        val initialInput = args.joinToString(" ").trim()
+        if (initialInput.isNotBlank()) {
+            renderer.searchQuery = initialInput
+            performSearchOrLoad(initialInput, autoPlay = true)
         }
     }
 
@@ -135,15 +217,15 @@ fun main(args: Array<String>) {
         while (running) {
             val now = System.currentTimeMillis()
             val isPlaying = player.isPlaying.value || player.isBuffering.value || renderer.isSearchingNetwork
-            val renderInterval = if (isPlaying) 100L else 500L
+            val renderInterval = if (isPlaying) 80L else 500L
 
             if (dirty.getAndSet(false) || (now - lastRenderTime >= renderInterval)) {
                 renderer.render()
                 lastRenderTime = now
             }
 
-            // Non-blocking read with 50ms timeout
-            val ch = reader.read(50)
+            // Non-blocking read with 40ms timeout
+            val ch = reader.read(40)
             if (ch == -1) continue
             if (ch == -2) {
                 // Timeout, no key pressed
@@ -160,27 +242,7 @@ fun main(args: Array<String>) {
                     10, 13 -> { // Enter
                         renderer.isSearchingInput = false
                         val query = renderer.searchQuery.trim()
-                        if (query.isNotBlank()) {
-                            renderer.isSearchingNetwork = true
-                            renderer.currentView = TuiView.SEARCH
-                            scope.launch(Dispatchers.IO) {
-                                val results = runCatching {
-                                    YtMusicRepository.search(query, SearchFilter.SONGS)
-                                }.getOrNull()?.getOrNull()
-
-                                val tracks = results?.mapNotNull { item ->
-                                    when (item) {
-                                        is SearchResult.Track -> item.song
-                                        is SearchResult.TopTrack -> item.song
-                                        else -> null
-                                    }
-                                } ?: emptyList()
-
-                                renderer.searchResults = tracks
-                                renderer.selectedSearchIndex = 0
-                                renderer.isSearchingNetwork = false
-                            }
-                        }
+                        performSearchOrLoad(query, autoPlay = true)
                     }
                     8, 127 -> { // Backspace
                         if (renderer.searchQuery.isNotEmpty()) {
@@ -203,6 +265,34 @@ fun main(args: Array<String>) {
                     }
                     ' '.code -> {
                         player.togglePlayPause()
+                    }
+                    's'.code -> { // Toggle shuffle
+                        val shuf = player.toggleShuffle()
+                        player.setStatus(if (shuf) "🔀 Shuffle: ON" else "🔀 Shuffle: OFF")
+                    }
+                    'r'.code -> { // Cycle repeat mode
+                        val rep = player.cycleRepeatMode()
+                        player.setStatus("🔁 Repeat: ${rep.label}")
+                    }
+                    'm'.code -> { // Toggle mute
+                        val muted = player.toggleMute()
+                        player.setStatus(if (muted) "🔇 Audio MUTED" else "🔊 Audio UNMUTED (${(player.volume.value * 100).toInt()}%)")
+                    }
+                    '['.code -> { // Lyrics offset -500ms
+                        val off = lyrics.adjustOffset(-500)
+                        player.setStatus("Lyrics offset: ${if (off >= 0) "+${off}ms" else "${off}ms"}")
+                    }
+                    ']'.code -> { // Lyrics offset +500ms
+                        val off = lyrics.adjustOffset(500)
+                        player.setStatus("Lyrics offset: ${if (off >= 0) "+${off}ms" else "${off}ms"}")
+                    }
+                    'H'.code -> { // Fast seek back 15s
+                        player.seekBy(-15.0)
+                        player.setStatus("Seek -15s")
+                    }
+                    'L'.code -> { // Fast seek forward 15s
+                        player.seekBy(15.0)
+                        player.setStatus("Seek +15s")
                     }
                     9 -> { // Tab
                         renderer.currentView = if (renderer.currentView == TuiView.SEARCH) {
@@ -247,7 +337,6 @@ fun main(args: Array<String>) {
                         if (renderer.currentView == TuiView.SEARCH) {
                             val selected = renderer.searchResults.getOrNull(renderer.selectedSearchIndex)
                             if (selected != null) {
-                                // Play clicked track and queue the rest of the search results
                                 player.playQueue(renderer.searchResults, renderer.selectedSearchIndex)
                             }
                         } else {
@@ -259,6 +348,7 @@ fun main(args: Array<String>) {
                             val selected = renderer.searchResults.getOrNull(renderer.selectedSearchIndex)
                             if (selected != null) {
                                 player.addToQueue(selected)
+                                player.setStatus("Added to queue: ${selected.title}")
                             }
                         }
                     }
@@ -287,6 +377,7 @@ fun main(args: Array<String>) {
                             player.queue.add(cur)
                             player.playIndex(0)
                         }
+                        player.setStatus("Cleared queue")
                     }
                     27 -> { // Escape sequence (e.g. arrow keys)
                         val next1 = reader.read(10)

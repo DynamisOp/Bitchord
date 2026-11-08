@@ -23,12 +23,20 @@ class CliLyrics(private val scope: CoroutineScope) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    var offsetMs: Long = 0L
+        private set
+
+    private val _offsetText = MutableStateFlow<String?>(null)
+    val offsetText: StateFlow<String?> = _offsetText.asStateFlow()
+
     private var currentSongId: String? = null
     private var fetchJob: Job? = null
 
     fun loadFor(song: Song, durationMs: Long) {
         if (currentSongId == song.videoId && _lines.value.isNotEmpty()) return
         currentSongId = song.videoId
+        offsetMs = 0L
+        _offsetText.value = null
         fetchJob?.cancel()
         _lines.value = emptyList()
         _currentIndex.value = -1
@@ -57,6 +65,12 @@ class CliLyrics(private val scope: CoroutineScope) {
         }
     }
 
+    fun adjustOffset(deltaMs: Long): Long {
+        offsetMs += deltaMs
+        _offsetText.value = if (offsetMs == 0L) null else if (offsetMs > 0) "+${offsetMs}ms" else "${offsetMs}ms"
+        return offsetMs
+    }
+
     fun updatePosition(posMs: Long) {
         val all = _lines.value
         if (all.isEmpty()) {
@@ -64,9 +78,10 @@ class CliLyrics(private val scope: CoroutineScope) {
             return
         }
 
+        val effectivePos = (posMs + offsetMs).coerceAtLeast(0L)
         var idx = -1
         for (i in all.indices) {
-            if (all[i].timeMs <= posMs) {
+            if (all[i].timeMs <= effectivePos) {
                 idx = i
             } else {
                 break
@@ -80,6 +95,8 @@ class CliLyrics(private val scope: CoroutineScope) {
     fun clear() {
         fetchJob?.cancel()
         currentSongId = null
+        offsetMs = 0L
+        _offsetText.value = null
         _lines.value = emptyList()
         _currentIndex.value = -1
         _isLoading.value = false

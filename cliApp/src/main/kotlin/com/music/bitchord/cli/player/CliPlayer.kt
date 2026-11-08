@@ -12,7 +12,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.sqrt
+
+enum class CliRepeatMode(val label: String) {
+    OFF("Off"),
+    ALL("All"),
+    ONE("One"),
+}
 
 class CliPlayer(
     private val scope: CoroutineScope,
@@ -43,7 +49,25 @@ class CliPlayer(
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    private val _streamInfo = MutableStateFlow<String?>(null)
+    val streamInfo: StateFlow<String?> = _streamInfo.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(CliRepeatMode.OFF)
+    val repeatMode: StateFlow<CliRepeatMode> = _repeatMode.asStateFlow()
+
+    private val _isShuffle = MutableStateFlow(false)
+    val isShuffle: StateFlow<Boolean> = _isShuffle.asStateFlow()
+
+    private val _isMuted = MutableStateFlow(false)
+    val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
+
+    // 12-band audio visualizer levels in [0.0, 1.0]
+    private val currentBands = FloatArray(12)
+    private val _visualizerBands = MutableStateFlow(FloatArray(12))
+    val visualizerBands: StateFlow<FloatArray> = _visualizerBands.asStateFlow()
+
     val queue = CopyOnWriteArrayList<Song>()
+    private val originalQueue = ArrayList<Song>()
     var queueIndex: Int = -1
         private set
 
@@ -51,6 +75,7 @@ class CliPlayer(
     private val seekTargetMs = AtomicLong(-1L)
     private val stopRequested = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
+    private var preMuteVolume = 0.8f
 
     init {
         sink.gain = 0.8f
@@ -59,6 +84,9 @@ class CliPlayer(
     fun playQueue(songs: List<Song>, startIndex: Int = 0) {
         queue.clear()
         queue.addAll(songs)
+        originalQueue.clear()
+        originalQueue.addAll(songs)
+        _isShuffle.value = false
         if (queue.isNotEmpty()) {
             val idx = startIndex.coerceIn(0, queue.size - 1)
             playIndex(idx)
@@ -67,8 +95,17 @@ class CliPlayer(
 
     fun addToQueue(song: Song) {
         queue.add(song)
+        originalQueue.add(song)
         if (_currentTrack.value == null) {
             playIndex(queue.size - 1)
+        }
+    }
+
+    fun addAllToQueue(songs: List<Song>) {
+        queue.addAll(songs)
+        originalQueue.addAll(songs)
+        if (_currentTrack.value == null && queue.isNotEmpty()) {
+            playIndex(queue.size - songs.size)
         }
     }
 
@@ -78,6 +115,7 @@ class CliPlayer(
             playIndex(existingIdx)
         } else {
             queue.add(song)
+            originalQueue.add(song)
             playIndex(queue.size - 1)
         }
     }
@@ -87,6 +125,56 @@ class CliPlayer(
         queueIndex = index
         val song = queue[index]
         startPlayback(song)
+    }
+
+    fun cycleRepeatMode(): CliRepeatMode {
+        val next = when (_repeatMode.value) {
+            CliRepeatMode.OFF -> CliRepeatMode.ALL
+            CliRepeatMode.ALL -> CliRepeatMode.ONE
+            CliRepeatMode.ONE -> CliRepeatMode.OFF
+        }
+        _repeatMode.value = next
+        return next
+    }
+
+    fun toggleShuffle(): Boolean {
+        val newShuffle = !_isShuffle.value
+        _isShuffle.value = newShuffle
+        val current = currentTrack.value
+        if (newShuffle) {
+            if (originalQueue.isEmpty() && queue.isNotEmpty()) {
+                originalQueue.addAll(queue)
+            }
+            val remaining = queue.filter { it.videoId != current?.videoId }.shuffled()
+            queue.clear()
+            if (current != null) queue.add(current)
+            queue.addAll(remaining)
+            queueIndex = if (current != null) 0 else -1
+        } else {
+            if (originalQueue.isNotEmpty()) {
+                queue.clear()
+                queue.addAll(originalQueue)
+                queueIndex = queue.indexOfFirst { it.videoId == current?.videoId }.coerceAtLeast(0)
+            }
+        }
+        return newShuffle
+    }
+
+    fun toggleMute(): Boolean {
+        val nowMuted = !_isMuted.value
+        _isMuted.value = nowMuted
+        if (nowMuted) {
+            preMuteVolume = _volume.value
+            sink.gain = 0f
+            _volume.value = 0f
+        } else {
+            setVolume(if (preMuteVolume > 0f) preMuteVolume else 0.8f)
+        }
+        return nowMuted
+    }
+
+    fun setStatus(msg: String?) {
+        _statusMessage.value = msg
     }
 
     private fun startPlayback(song: Song) {
@@ -147,6 +235,8 @@ class CliPlayer(
                 _isBuffering.value = false
                 _isPlaying.value = true
                 _statusMessage.value = null
+                val sampleRateKhz = newDecoder.outputFormat.sampleRate / 1000
+                _streamInfo.value = "OPUS · ${sampleRateKhz}kHz Stereo"
 
                 lyrics.loadFor(song, finalDuration)
 
@@ -154,6 +244,7 @@ class CliPlayer(
                 while (!stopRequested.get()) {
                     if (isPaused.get()) {
                         sink.pause()
+                        clearVisualizer()
                         delay(40)
                         continue
                     } else {
@@ -175,15 +266,25 @@ class CliPlayer(
                     }
 
                     sink.write(samples, samples.size)
+                    updateVisualizer(samples)
 
                     val curPosMs = newDecoder.positionUs / 1000
                     _positionMs.value = curPosMs
                     lyrics.updatePosition(curPosMs)
                 }
 
-                // If finished naturally without manual stop, advance to next
+                clearVisualizer()
+
+                // If finished naturally without manual stop, advance according to repeat mode
                 if (!stopRequested.get()) {
-                    next()
+                    when (_repeatMode.value) {
+                        CliRepeatMode.ONE -> playIndex(queueIndex)
+                        CliRepeatMode.ALL -> {
+                            val nextIdx = queueIndex + 1
+                            if (nextIdx in queue.indices) playIndex(nextIdx) else playIndex(0)
+                        }
+                        CliRepeatMode.OFF -> next()
+                    }
                 }
             } catch (e: CancellationException) {
                 // Task cancelled cleanly
@@ -191,11 +292,37 @@ class CliPlayer(
                 _statusMessage.value = "Playback error: ${e.message ?: e.javaClass.simpleName}"
                 _isBuffering.value = false
                 _isPlaying.value = false
+                clearVisualizer()
             } finally {
                 activeDecoder?.close()
                 if (decoder == activeDecoder) decoder = null
             }
         }
+    }
+
+    private fun updateVisualizer(samples: FloatArray) {
+        val step = samples.size / 12
+        if (step <= 0) return
+        val bands = FloatArray(12)
+        for (b in 0 until 12) {
+            var sum = 0f
+            val start = b * step
+            val end = minOf(start + step, samples.size)
+            for (i in start until end) {
+                val s = samples[i]
+                sum += s * s
+            }
+            val rms = sqrt(sum / (end - start).coerceAtLeast(1))
+            val target = (rms * 3.5f).coerceIn(0f, 1f)
+            currentBands[b] = currentBands[b] * 0.65f + target * 0.35f
+            bands[b] = currentBands[b]
+        }
+        _visualizerBands.value = bands
+    }
+
+    private fun clearVisualizer() {
+        for (i in currentBands.indices) currentBands[i] = 0f
+        _visualizerBands.value = FloatArray(12)
     }
 
     fun togglePlayPause() {
@@ -209,6 +336,7 @@ class CliPlayer(
             isPaused.set(true)
             _isPlaying.value = false
             sink.pause()
+            clearVisualizer()
         }
     }
 
@@ -224,6 +352,8 @@ class CliPlayer(
         val nextIdx = queueIndex + 1
         if (nextIdx in queue.indices) {
             playIndex(nextIdx)
+        } else if (_repeatMode.value == CliRepeatMode.ALL) {
+            playIndex(0)
         } else {
             stopPlayback()
             _statusMessage.value = "End of queue"
@@ -246,17 +376,21 @@ class CliPlayer(
     }
 
     fun volumeUp(step: Float = 0.05f) {
+        if (_isMuted.value) _isMuted.value = false
         setVolume((_volume.value + step).coerceIn(0f, 1f))
     }
 
     fun volumeDown(step: Float = 0.05f) {
+        if (_isMuted.value) _isMuted.value = false
         setVolume((_volume.value - step).coerceIn(0f, 1f))
     }
 
     fun setVolume(vol: Float) {
         val clamped = vol.coerceIn(0f, 1f)
         _volume.value = clamped
-        sink.gain = clamped
+        if (!_isMuted.value) {
+            sink.gain = clamped
+        }
     }
 
     fun stopPlayback() {
@@ -269,6 +403,7 @@ class CliPlayer(
         decoder = null
         _isPlaying.value = false
         _isBuffering.value = false
+        clearVisualizer()
     }
 
     override fun close() {
