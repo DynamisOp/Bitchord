@@ -7,23 +7,20 @@
 
 # BitChord
 
-### Aesthetic YouTube Music Client
+### Aesthetic YouTube Music Client for Android, Desktop & Terminal
 
 <br/>
 
-[![Latest release](https://img.shields.io/github/v/release/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![License](https://img.shields.io/github/license/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/kushagrasinghx/BitChord/total?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![Listening now](https://api.bitchord.kushagrasingh.in/api/stats/live/badge.svg)](https://api.bitchord.kushagrasingh.in/api/stats/live)
+[![Latest release](https://img.shields.io/github/v/release/DynamisOp/Bitchord?style=for-the-badge&labelColor=0d1117)](https://github.com/DynamisOp/Bitchord/releases)
+[![License](https://img.shields.io/github/license/DynamisOp/Bitchord?style=for-the-badge&labelColor=0d1117)](https://github.com/DynamisOp/Bitchord/blob/main/LICENSE)
 
 <br/>
 
-[**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
+[**Download & Platforms**](#download) · [**Features**](#features) · [**CLI Player**](CLI.md) · [**Desktop App**](DESKTOP.md) · [**Contributing**](#contributing) · [**Disclaimer**](#disclaimer)
 
 <br/>
 
 <a href="https://fmhy.net/mobile#youtube-music" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/available/fmhy/cozy.svg" alt="Featured on FMHY" height="55"/></a>
-<a href="https://trendshift.io/repositories/177639?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/177639" alt="kushagrasinghx%2FBitChord | Trendshift" width="250" height="55"/></a>
 
 </div>
 
@@ -62,14 +59,16 @@
     </td>
     <td width="50%" valign="top">
 
-#### Experience
+#### Experience & Platforms
+- **Android, Desktop & CLI** — phone, tablet, Android TV, Wear OS watch remote, Desktop (Linux, macOS, Windows), and ultra-lightweight Terminal/CLI.
 - **Animated album canvas** — motion artwork on the now-playing screen.
 - **Word-synced lyrics** — word/syllable-level highlighting from multiple sources.
 - **Lyrics providers** — credit to [lrc.red](https://lrc.red), [BiniLyrics](https://github.com/binimum), [BetterLyrics](https://github.com/better-lyrics/better-lyrics), [PaxSenix](https://lyrics.paxsenix.org), [LyricsPlus](https://github.com/ibratabian17/YouLyPlus), [SimpMusic](https://github.com/maxrave-dev/SimpMusic), [Unison](https://unison.boidu.dev), [Megalobiz](https://www.megalobiz.com), [KuGou](https://www.kugou.com), [LRCLIB](https://lrclib.net), [Musixmatch](https://www.musixmatch.com) and [Genius](https://genius.com).
 - **Dynamic, artwork-driven theming** — Material palette extracted from album art.
-- **Frosted-glass UI** — Telegram-style translucent bars via Haze, Material 3 theming.
+- **Liquid Glass UI** — frosted glass backdrop with ambient aurora mesh gradients and specular hairline borders.
 
 #### Controls & Tweaks
+- **Potato & Performance Glass mode** — hardware-accelerated downsampled blur delivering 100% of the frosted liquid glass aesthetic with >93% lower GPU fill rate on low-end laptops.
 - **Per-network audio quality** — separate quality ceilings for Wi-Fi and mobile data.
 - **Playback speed control** (0.5×–2.0×) and **skip silence**.
 - **Sleep timer** — fixed presets or "stop after this track".
@@ -87,14 +86,35 @@
 
 <div align="center">
 
-<h1><a id="download"></a>Download</h1>
+<h1><a id="download"></a>Download & Platforms</h1>
 
-<a href="https://github.com/kushagrasinghx/BitChord/releases" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/supported/android/cozy.svg" alt="Download for Android" height="55"/></a>
-
-Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx/BitChord/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
-
-For the Linux and desktop app, see [DESKTOP.md](DESKTOP.md).
-
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <h3>📱 Android</h3>
+      <p>Phone, Tablet, Android TV, Wear OS</p>
+      <a href="https://github.com/DynamisOp/Bitchord/releases" target="_blank" rel="noopener noreferrer">
+        <img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/supported/android/cozy.svg" alt="Download for Android" height="48"/>
+      </a>
+      <br/><br/>
+      <p>Grab the latest signed APKs from <a href="https://github.com/DynamisOp/Bitchord/releases">Releases</a>.</p>
+    </td>
+    <td align="center" width="33%">
+      <h3>💻 Desktop</h3>
+      <p>Linux (Arch/Deb/RPM/AppImage), macOS, Windows</p>
+      <p>Frosted liquid glass UI, low-resource potato mode, and ambient backdrop lighting.</p>
+      <br/>
+      <a href="DESKTOP.md"><strong>Desktop Guide & Arch Package &rarr;</strong></a>
+    </td>
+    <td align="center" width="33%">
+      <h3>⌨️ CLI / TUI</h3>
+      <p>Terminal Player for Linux & macOS</p>
+      <p>Ultra-low resource usage, synced lyrics, 12-band ASCII audio spectrum visualizer, and playlist playback.</p>
+      <br/>
+      <a href="CLI.md"><strong>CLI Guide & Keybindings &rarr;</strong></a>
+    </td>
+  </tr>
+</table>
 
 </div>
 
@@ -108,27 +128,11 @@ We welcome contributions to BitChord! Please review our [Contributing Guide](CON
 
 [**Contributing Guide**](CONTRIBUTING.md) · [**Code of Conduct**](CODE_OF_CONDUCT.md) · [**Maintainers**](MAINTAINERS.md) · [**Additional Docs**](ADDITIONAL.md)
 
-### Thanks to all contributors ❤
+### Contributors ❤
 
-<a href="https://github.com/kushagrasinghx/BitChord/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/kushagrasinghx/BitChord/contributors/contributors.svg" />
+<a href="https://github.com/DynamisOp/Bitchord/graphs/contributors">
+  <img src="https://raw.githubusercontent.com/DynamisOp/Bitchord/contributors/contributors.svg" onerror="this.src='https://raw.githubusercontent.com/kushagrasinghx/BitChord/contributors/contributors.svg'" />
 </a>
-
-</div>
-
----
-
-<div align="center">
-
-<h1><a id="support"></a>Support</h1>
-
-BitChord is free and always will be — if it's earned a spot in your rotation, you can chip in here:
-
-<a href="https://ko-fi.com/kushagrasinghx" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/kofi-singular-alt/cozy.svg" alt="Support me on Ko-fi" height="55"/></a>
-<a href="https://paypal.me/kuxhagrasingh" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/paypal-plural/cozy.svg" alt="Support us on PayPal" height="55"/></a>
-
-<br/>
-<img src="upi_support.jpg" alt="UPI Support" width="250" />
 
 </div>
 

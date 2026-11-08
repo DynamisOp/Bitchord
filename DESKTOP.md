@@ -6,6 +6,9 @@ the supported Compose Multiplatform desktop model.
 
 The desktop target uses Java 21.
 
+> [!TIP]
+> Looking for an ultra-lightweight terminal player instead? Check out [CLI.md](CLI.md) for `bitchord-cli` with synced lyrics and ASCII visualizer.
+
 On macOS (Apple Silicon or Intel), run it with a Java 21 JDK available in your environment:
 
 ```bash
@@ -27,7 +30,7 @@ running `gradlew.bat :desktopApp:run`.
 
 ## Installing a release
 
-Every download on the [releases page](https://github.com/kushagrasinghx/BitChord/releases) carries its own Java
+Every download on the [releases page](https://github.com/DynamisOp/Bitchord/releases) carries its own Java
 runtime, the FFmpeg and ONNX natives, the Automix analyser and its models.
 Nothing else has to be installed first — no JDK, no codec pack.
 
@@ -36,6 +39,7 @@ Nothing else has to be installed first — no JDK, no codec pack.
 | macOS | `BitChord-<version>-macos-arm64.dmg` | For Apple Silicon Macs (M1/M2/M3/M4/later). Drag to Applications. |
 | macOS | `BitChord-<version>-macos-x64.dmg` | For Intel Macs. Drag to Applications. |
 | macOS | `BitChord-<version>-macos-*.pkg` | Standard macOS installer package for automated or managed installations. |
+| Linux | `bitchord-desktop-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U bitchord-desktop-*.pkg.tar.zst` on Arch Linux. |
 | Linux | `BitChord-<version>-linux-x86_64.AppImage` | `chmod +x` it and run. No install, works on any distribution. |
 | Linux | `BitChord-<version>-linux-amd64.deb` | `sudo apt install ./BitChord-*.deb` on Debian, Ubuntu and derivatives. |
 | Linux | `BitChord-<version>-linux-x86_64.rpm` | `sudo dnf install ./BitChord-*.rpm` on Fedora, RHEL and openSUSE. |

@@ -4,7 +4,8 @@ This document lists the maintainers responsible for BitChord.
 
 | Maintainer | GitHub | Responsibilities |
 |---|---|---|
-| Kushagra Singh | [@kushagrasinghx](https://github.com/kushagrasinghx) | Project creator, core architecture, release management, and PR reviews |
+| DynamisOp | [@DynamisOp](https://github.com/DynamisOp) | Fork maintainer, Desktop revival & CLI player architecture |
+| Kushagra Singh | [@kushagrasinghx](https://github.com/kushagrasinghx) | Original project creator, core architecture |
 
 ## Responsibilities
 
@@ -15,6 +16,8 @@ Maintainers oversee project direction, repository maintenance, review and mergin
 This list is automatically generated from GitHub repository contributor data.
 
 <!-- BEGIN CONTRIBUTORS -->
+- [@DynamisOp](https://github.com/DynamisOp)
+- [@gemini](https://github.com/gemini)
 - [@kushagrasinghx](https://github.com/kushagrasinghx)
 - [@Galaxyyss](https://github.com/Galaxyyss)
 - [@KabirSinghBhatia](https://github.com/KabirSinghBhatia)
