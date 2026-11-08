@@ -47,6 +47,10 @@ AGENTS.md
 # Built packages — release APKs/bundles are handed out, never committed
 *.apk
 *.aab
+*.pkg.tar.zst
+.jdk21/
+desktopApp/packaging/archlinux/pkg/
+desktopApp/packaging/archlinux/src/
 
 # Claude Code session files (launch configs, worktrees)
 .claude/

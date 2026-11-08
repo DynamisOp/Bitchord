@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=BitChord
+GenericName=Music Player
+Comment=Aesthetic YouTube Music client with Liquid Glass UI
+Exec=bitchord %u
+Icon=bitchord
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+MimeType=x-scheme-handler/bitchord;
+StartupWMClass=com-music-bitchord-desktop-MainKt
+Keywords=music;player;youtube;streaming;audio;liquid;glass;

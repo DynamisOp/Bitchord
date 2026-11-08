@@ -1,0 +1,55 @@
+# Maintainer: BitChord Linux Contributors
+pkgname=bitchord-desktop
+pkgver=1.9.1
+pkgrel=1
+pkgdesc="Aesthetic YouTube Music client for Linux with Liquid Glass & Low-End Potato Laptop Optimizations"
+arch=('x86_64')
+url="https://github.com/kushagrasinghx/BitChord"
+license=('GPL-3.0-or-later')
+depends=(
+    'gtk3'
+    'alsa-lib'
+    'libglvnd'
+    'libsecret'
+    'nss'
+)
+optdepends=(
+    'pipewire-pulse: PipeWire pulse audio output'
+    'pulseaudio: PulseAudio output'
+    'libappindicator-gtk3: System tray integration'
+)
+provides=('bitchord' 'bitchord-desktop')
+conflicts=('bitchord' 'bitchord-desktop-git')
+
+build() {
+    cd "$startdir/../../.."
+    export ANDROID_USER_HOME="/tmp/android-home"
+    mkdir -p "$ANDROID_USER_HOME"
+    # Build using Gradle and JDK 21
+    if [ -d "$startdir/../../../.jdk21" ]; then
+        JAVA_HOME="$startdir/../../../.jdk21" ./gradlew :desktopApp:createDistributable
+    elif [ -d "/usr/lib/jvm/java-21-openjdk" ]; then
+        JAVA_HOME="/usr/lib/jvm/java-21-openjdk" ./gradlew :desktopApp:createDistributable
+    else
+        ./gradlew :desktopApp:createDistributable
+    fi
+}
+
+package() {
+    local app_dir="$startdir/../../../desktopApp/build/compose/binaries/main/app/BitChord"
+
+    # Install main application bundle into /opt/bitchord
+    install -d "$pkgdir/opt/bitchord"
+    cp -dr --no-preserve=ownership "$app_dir/." "$pkgdir/opt/bitchord/"
+
+    # Install binary launcher symlink into /usr/bin
+    install -d "$pkgdir/usr/bin"
+    ln -s "/opt/bitchord/bin/BitChord" "$pkgdir/usr/bin/bitchord"
+
+    # Install desktop entry
+    install -Dm644 "$startdir/bitchord.desktop" "$pkgdir/usr/share/applications/bitchord.desktop"
+
+    # Install application icons
+    install -Dm644 "$startdir/../icons/AppIcon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/bitchord.png"
+    install -Dm644 "$startdir/../icons/AppIcon.png" "$pkgdir/usr/share/pixmaps/bitchord.png"
+}
