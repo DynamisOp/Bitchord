@@ -17,7 +17,7 @@ This list is automatically generated from GitHub repository contributor data.
 
 <!-- BEGIN CONTRIBUTORS -->
 - [@DynamisOp](https://github.com/DynamisOp)
-- [@gemini](https://github.com/gemini)
+- [@gemini](https://gemini.google.com)
 - [@kushagrasinghx](https://github.com/kushagrasinghx)
 - [@Galaxyyss](https://github.com/Galaxyyss)
 - [@KabirSinghBhatia](https://github.com/KabirSinghBhatia)
