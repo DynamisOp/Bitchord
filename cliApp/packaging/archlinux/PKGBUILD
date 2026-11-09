@@ -1,6 +1,6 @@
 # Maintainer: BitChord Linux Contributors
 pkgname=bitchord-cli
-pkgver=1.9.1
+pkgver=1.9.2
 pkgrel=1
 pkgdesc="Ultra-low resource TUI YouTube Music player with synced lyrics and Vim keybindings"
 arch=('x86_64')

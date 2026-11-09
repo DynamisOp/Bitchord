@@ -1,6 +1,6 @@
 # Maintainer: BitChord Linux Contributors
 pkgname=bitchord-desktop
-pkgver=1.9.1
+pkgver=1.9.2
 pkgrel=1
 pkgdesc="Aesthetic YouTube Music client for Linux with Liquid Glass & Ultra-Low Resource CLI/TUI"
 arch=('x86_64')

@@ -58,7 +58,7 @@ A prebuilt package is available in the repository root or can be compiled locall
 
 ```bash
 # Install prebuilt package
-sudo pacman -U bitchord-cli-1.9.1-1-x86_64.pkg.tar.zst
+sudo pacman -U bitchord-cli-1.9.2-1-x86_64.pkg.tar.zst
 
 # Or build the package yourself
 cd cliApp/packaging/archlinux

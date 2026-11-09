@@ -280,7 +280,7 @@ class TuiRenderer(
     private fun buildHeader(width: Int): String {
         val shortTheme = theme.name.substringBefore(" (")
         val title = if (width >= 105) {
-            " ${theme.primary}🎵 BITCHORD TUI${CliTheme.RESET} ${theme.textMuted}[v1.9.1 · $shortTheme]${CliTheme.RESET}"
+            " ${theme.primary}🎵 BITCHORD TUI${CliTheme.RESET} ${theme.textMuted}[v1.9.2 · $shortTheme]${CliTheme.RESET}"
         } else if (width >= 80) {
             " ${theme.primary}🎵 BITCHORD TUI${CliTheme.RESET} ${theme.textMuted}[$shortTheme]${CliTheme.RESET}"
         } else {
