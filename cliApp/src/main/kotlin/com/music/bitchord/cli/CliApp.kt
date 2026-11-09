@@ -259,9 +259,46 @@ fun main(args: Array<String>) {
                     'q'.code, 3 -> { // 'q' or Ctrl+C
                         running = false
                     }
+                    'f'.code -> { // Toggle favorite on playing track or selected item
+                        val curTrack = player.currentTrack.value
+                        val targetSong = when {
+                            curTrack != null -> curTrack
+                            renderer.currentView == TuiView.SEARCH -> renderer.searchResults.getOrNull(renderer.selectedSearchIndex)
+                            renderer.currentView == TuiView.QUEUE -> player.queue.getOrNull(renderer.selectedQueueIndex)
+                            renderer.currentView == TuiView.FAVORITES -> CliFavorites.getFavorites().getOrNull(renderer.selectedFavoritesIndex)
+                            else -> null
+                        }
+                        if (targetSong != null) {
+                            val added = CliFavorites.toggleFavorite(targetSong)
+                            val shortTitle = targetSong.title.take(24)
+                            val msg = if (added) "♥ Added to Favorites: $shortTitle" else "♡ Removed from Favorites: $shortTitle"
+                            player.setStatus(msg)
+                            if (renderer.currentView == TuiView.FAVORITES && !added) {
+                                val count = CliFavorites.count()
+                                if (renderer.selectedFavoritesIndex >= count) {
+                                    renderer.selectedFavoritesIndex = (count - 1).coerceAtLeast(0)
+                                }
+                            }
+                        }
+                    }
+                    'd'.code, 'x'.code -> { // Remove from favorites
+                        if (renderer.currentView == TuiView.FAVORITES) {
+                            val favs = CliFavorites.getFavorites()
+                            val song = favs.getOrNull(renderer.selectedFavoritesIndex)
+                            if (song != null) {
+                                CliFavorites.removeFavorite(song.videoId)
+                                val shortTitle = song.title.take(24)
+                                player.setStatus("♡ Removed from Favorites: $shortTitle")
+                                val count = CliFavorites.count()
+                                if (renderer.selectedFavoritesIndex >= count) {
+                                    renderer.selectedFavoritesIndex = (count - 1).coerceAtLeast(0)
+                                }
+                            }
+                        }
+                    }
                     'z'.code -> { // Toggle queue minimization / Zen lyrics mode
                         val isZen = renderer.toggleZenMode()
-                        val msg = if (isZen) "🪟 Queue Minimized (Zen Lyrics Mode) [press z to restore]" else "🪟 Split View Restored"
+                        val msg = if (isZen) "Zen Lyrics Mode [z: restore]" else "Split View Restored"
                         player.setStatus(msg)
                     }
                     'v'.code -> { // Cycle layout modes (Split / Zen / Full Queue)
@@ -311,14 +348,14 @@ fun main(args: Array<String>) {
                         player.seekBy(15.0)
                         player.setStatus("Seek +15s")
                     }
-                    9 -> { // Tab
+                    9 -> { // Tab (cycle Search -> Queue -> Favorites)
                         if (renderer.layoutMode == TuiLayout.ZEN) {
                             renderer.layoutMode = TuiLayout.SPLIT
                         }
-                        renderer.currentView = if (renderer.currentView == TuiView.SEARCH) {
-                            TuiView.QUEUE
-                        } else {
-                            TuiView.SEARCH
+                        renderer.currentView = when (renderer.currentView) {
+                            TuiView.SEARCH -> TuiView.QUEUE
+                            TuiView.QUEUE -> TuiView.FAVORITES
+                            TuiView.FAVORITES -> TuiView.SEARCH
                         }
                     }
                     '1'.code -> {
@@ -333,49 +370,97 @@ fun main(args: Array<String>) {
                         }
                         renderer.currentView = TuiView.QUEUE
                     }
+                    '3'.code -> {
+                        if (renderer.layoutMode == TuiLayout.ZEN) {
+                            renderer.layoutMode = TuiLayout.SPLIT
+                        }
+                        renderer.currentView = TuiView.FAVORITES
+                    }
                     'j'.code -> {
-                        if (renderer.currentView == TuiView.SEARCH) {
-                            if (renderer.searchResults.isNotEmpty()) {
-                                renderer.selectedSearchIndex =
-                                    (renderer.selectedSearchIndex + 1).coerceAtMost(renderer.searchResults.size - 1)
+                        when (renderer.currentView) {
+                            TuiView.SEARCH -> {
+                                if (renderer.searchResults.isNotEmpty()) {
+                                    renderer.selectedSearchIndex =
+                                        (renderer.selectedSearchIndex + 1).coerceAtMost(renderer.searchResults.size - 1)
+                                }
                             }
-                        } else {
-                            if (player.queue.isNotEmpty()) {
-                                renderer.selectedQueueIndex =
-                                    (renderer.selectedQueueIndex + 1).coerceAtMost(player.queue.size - 1)
+                            TuiView.QUEUE -> {
+                                if (player.queue.isNotEmpty()) {
+                                    renderer.selectedQueueIndex =
+                                        (renderer.selectedQueueIndex + 1).coerceAtMost(player.queue.size - 1)
+                                }
+                            }
+                            TuiView.FAVORITES -> {
+                                val count = CliFavorites.count()
+                                if (count > 0) {
+                                    renderer.selectedFavoritesIndex =
+                                        (renderer.selectedFavoritesIndex + 1).coerceAtMost(count - 1)
+                                }
                             }
                         }
                     }
                     'k'.code -> {
-                        if (renderer.currentView == TuiView.SEARCH) {
-                            if (renderer.searchResults.isNotEmpty()) {
-                                renderer.selectedSearchIndex =
-                                    (renderer.selectedSearchIndex - 1).coerceAtLeast(0)
+                        when (renderer.currentView) {
+                            TuiView.SEARCH -> {
+                                if (renderer.searchResults.isNotEmpty()) {
+                                    renderer.selectedSearchIndex =
+                                        (renderer.selectedSearchIndex - 1).coerceAtLeast(0)
+                                }
                             }
-                        } else {
-                            if (player.queue.isNotEmpty()) {
-                                renderer.selectedQueueIndex =
-                                    (renderer.selectedQueueIndex - 1).coerceAtLeast(0)
+                            TuiView.QUEUE -> {
+                                if (player.queue.isNotEmpty()) {
+                                    renderer.selectedQueueIndex =
+                                        (renderer.selectedQueueIndex - 1).coerceAtLeast(0)
+                                }
+                            }
+                            TuiView.FAVORITES -> {
+                                val count = CliFavorites.count()
+                                if (count > 0) {
+                                    renderer.selectedFavoritesIndex =
+                                        (renderer.selectedFavoritesIndex - 1).coerceAtLeast(0)
+                                }
                             }
                         }
                     }
                     10, 13 -> { // Enter
-                        if (renderer.currentView == TuiView.SEARCH) {
-                            val selected = renderer.searchResults.getOrNull(renderer.selectedSearchIndex)
-                            if (selected != null) {
-                                player.playQueue(renderer.searchResults, renderer.selectedSearchIndex)
+                        when (renderer.currentView) {
+                            TuiView.SEARCH -> {
+                                val selected = renderer.searchResults.getOrNull(renderer.selectedSearchIndex)
+                                if (selected != null) {
+                                    player.playQueue(renderer.searchResults, renderer.selectedSearchIndex)
+                                }
                             }
-                        } else {
-                            player.playIndex(renderer.selectedQueueIndex)
+                            TuiView.QUEUE -> {
+                                player.playIndex(renderer.selectedQueueIndex)
+                            }
+                            TuiView.FAVORITES -> {
+                                val favs = CliFavorites.getFavorites()
+                                if (favs.isNotEmpty()) {
+                                    val idx = renderer.selectedFavoritesIndex.coerceIn(0, favs.size - 1)
+                                    player.playQueue(favs, idx)
+                                    player.setStatus("Playing Favorites (${favs.size} songs)")
+                                }
+                            }
                         }
                     }
                     'a'.code -> { // Add to queue
-                        if (renderer.currentView == TuiView.SEARCH) {
-                            val selected = renderer.searchResults.getOrNull(renderer.selectedSearchIndex)
-                            if (selected != null) {
-                                player.addToQueue(selected)
-                                player.setStatus("Added to queue: ${selected.title}")
+                        when (renderer.currentView) {
+                            TuiView.SEARCH -> {
+                                val selected = renderer.searchResults.getOrNull(renderer.selectedSearchIndex)
+                                if (selected != null) {
+                                    player.addToQueue(selected)
+                                    player.setStatus("Added to queue: ${selected.title}")
+                                }
                             }
+                            TuiView.FAVORITES -> {
+                                val favs = CliFavorites.getFavorites()
+                                val selected = favs.getOrNull(renderer.selectedFavoritesIndex)
+                                if (selected != null) {
+                                    player.addToQueue(selected)
+                                    player.setStatus("Added to queue: ${selected.title}")
+                                }
+                            }
+                            else -> {}
                         }
                     }
                     'n'.code -> {
@@ -411,20 +496,32 @@ fun main(args: Array<String>) {
                             val next2 = reader.read(10)
                             when (next2) {
                                 'A'.code -> { // Up arrow
-                                    if (renderer.currentView == TuiView.SEARCH) {
-                                        renderer.selectedSearchIndex = (renderer.selectedSearchIndex - 1).coerceAtLeast(0)
-                                    } else {
-                                        renderer.selectedQueueIndex = (renderer.selectedQueueIndex - 1).coerceAtLeast(0)
+                                    when (renderer.currentView) {
+                                        TuiView.SEARCH -> renderer.selectedSearchIndex = (renderer.selectedSearchIndex - 1).coerceAtLeast(0)
+                                        TuiView.QUEUE -> renderer.selectedQueueIndex = (renderer.selectedQueueIndex - 1).coerceAtLeast(0)
+                                        TuiView.FAVORITES -> {
+                                            val count = CliFavorites.count()
+                                            if (count > 0) renderer.selectedFavoritesIndex = (renderer.selectedFavoritesIndex - 1).coerceAtLeast(0)
+                                        }
                                     }
                                 }
                                 'B'.code -> { // Down arrow
-                                    if (renderer.currentView == TuiView.SEARCH) {
-                                        if (renderer.searchResults.isNotEmpty()) {
-                                            renderer.selectedSearchIndex = (renderer.selectedSearchIndex + 1).coerceAtMost(renderer.searchResults.size - 1)
+                                    when (renderer.currentView) {
+                                        TuiView.SEARCH -> {
+                                            if (renderer.searchResults.isNotEmpty()) {
+                                                renderer.selectedSearchIndex = (renderer.selectedSearchIndex + 1).coerceAtMost(renderer.searchResults.size - 1)
+                                            }
                                         }
-                                    } else {
-                                        if (player.queue.isNotEmpty()) {
-                                            renderer.selectedQueueIndex = (renderer.selectedQueueIndex + 1).coerceAtMost(player.queue.size - 1)
+                                        TuiView.QUEUE -> {
+                                            if (player.queue.isNotEmpty()) {
+                                                renderer.selectedQueueIndex = (renderer.selectedQueueIndex + 1).coerceAtMost(player.queue.size - 1)
+                                            }
+                                        }
+                                        TuiView.FAVORITES -> {
+                                            val count = CliFavorites.count()
+                                            if (count > 0) {
+                                                renderer.selectedFavoritesIndex = (renderer.selectedFavoritesIndex + 1).coerceAtMost(count - 1)
+                                            }
                                         }
                                     }
                                 }

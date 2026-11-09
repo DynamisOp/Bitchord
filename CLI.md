@@ -14,7 +14,9 @@ Designed for low-end hardware, Linux servers, SSH sessions, terminal multiplexer
 - **Search & Playlists**: Search for tracks, artists, albums, playlists (`p:<query>`), or paste YouTube video and playlist URLs directly.
 - **Queue Management**: Add songs to queue (`a`), view upcoming queue items (`Tab`), skip (`n` / `p`), and seek.
 - **Playback Controls**: Shuffle mode (`s`), repeat modes (`r`: Off, All, One), mute (`m`), and volume adjustment.
-- **Zero-Flicker TUI**: Direct terminal addressing with raw mode (JLine 3), absolute row drawing, and auto-wrap suppression for smooth rendering.
+- **Zero-Flicker Rounded Card TUI**: Modern rounded panel boxes (`╭───╮`, `╰───╯`), direct JLine 3 terminal addressing, raw mode, and auto-wrap suppression for butter-smooth rendering.
+- **Solid Block Progress Bar**: High-density block progress bar (`█` / `░`) with explicit percentage indicator.
+- **Favorites & Starred Library**: Quick star/favorite system (`f`), persistent storage, and dedicated Starred Library tab (`3`).
 - **Queue Minimization & Zen Mode**: Minimize the playback queue (`z` or `v`) to expand synced lyrics to full width.
 - **8 Built-in Color Themes**: Switch themes live (`t`) between Neon Cyberpunk, Catppuccin Mocha, Tokyo Night, Dracula, Nord Arctic, Emerald Matrix, Amber Sunset, and Classic 16-color ANSI with automatic preference persistence.
 
@@ -24,13 +26,15 @@ Designed for low-end hardware, Linux servers, SSH sessions, terminal multiplexer
 
 | Key | Action |
 |---|---|
+| `Space` | Play / Pause playback |
+| `f` | Toggle favorite / star on current track |
 | `z` | Toggle Queue Minimization / Zen Fullscreen Lyrics mode |
 | `v` | Cycle layout modes (Split View ↔ Zen Lyrics ↔ Full Queue) |
 | `t` | Cycle color themes (Cyberpunk, Catppuccin, Tokyo Night, Dracula, Nord, Matrix, Amber, ANSI) |
-| `Space` | Play / Pause playback |
-| `j` / `k` or `Down` / `Up` | Navigate search results or queue items |
+| `j` / `k` or `Down` / `Up` | Navigate search results, queue items, or favorites |
 | `Enter` | Play selected track |
 | `a` | Add selected track to queue |
+| `d` / `x` | Remove selected track from Favorites (in Favorites view) |
 | `n` / `p` | Next / Previous track in queue |
 | `h` / `l` | Seek backward / forward 5 seconds |
 | `H` / `L` | Seek backward / forward 15 seconds (fast seek) |
@@ -40,7 +44,8 @@ Designed for low-end hardware, Linux servers, SSH sessions, terminal multiplexer
 | `r` | Cycle repeat mode (Off → All → One) |
 | `[` / `]` | Adjust lyrics timing offset by ±500ms |
 | `/` | Open search prompt (tracks, `p:playlist`, or YouTube URL) |
-| `Tab` | Switch view between Search Results and Up Next Queue |
+| `1` / `2` / `3` | Direct tab switch (`1`: Search, `2`: Queue, `3`: Favorites) |
+| `Tab` | Cycle view between Search, Queue, and Starred Favorites |
 | `q` | Quit player |
 
 ---

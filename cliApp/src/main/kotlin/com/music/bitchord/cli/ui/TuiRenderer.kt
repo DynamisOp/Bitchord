@@ -1,6 +1,7 @@
 package com.music.bitchord.cli.ui
 
 import com.music.bitchord.cli.CliConfig
+import com.music.bitchord.cli.CliFavorites
 import com.music.bitchord.cli.lyrics.CliLyrics
 import com.music.bitchord.cli.player.CliPlayer
 import com.music.bitchord.cli.player.CliRepeatMode
@@ -8,13 +9,14 @@ import com.music.bitchord.data.model.Song
 import org.jline.terminal.Terminal
 import java.io.PrintWriter
 
-enum class TuiView {
-    SEARCH,
-    QUEUE,
+enum class TuiView(val label: String) {
+    SEARCH("SEARCH"),
+    QUEUE("QUEUE"),
+    FAVORITES("FAVORITES"),
 }
 
 enum class TuiLayout(val label: String) {
-    SPLIT("Split View (50/50)"),
+    SPLIT("Split View (Cards)"),
     ZEN("Queue Minimized (Zen Lyrics)"),
     QUEUE_ONLY("Full Queue View"),
 }
@@ -114,6 +116,7 @@ class TuiRenderer(
     var searchResults: List<Song> = emptyList()
     var selectedSearchIndex: Int = 0
     var selectedQueueIndex: Int = 0
+    var selectedFavoritesIndex: Int = 0
     var searchQuery: String = ""
     var isSearchingInput: Boolean = false
     var isSearchingNetwork: Boolean = false
@@ -137,60 +140,127 @@ class TuiRenderer(
         return theme
     }
 
+    fun renderBoxTop(title: String, width: Int, rightMeta: String = ""): String {
+        val rightPart = if (AnsiUtils.stripAnsi(rightMeta).isNotBlank()) " $rightMeta " else ""
+        val rightW = AnsiUtils.visualWidth(rightPart)
+        val maxTitleW = (width - 4 - rightW - 2).coerceAtLeast(0)
+        val clippedTitle = if (AnsiUtils.visualWidth(title) > maxTitleW) AnsiUtils.clipToWidth(title, maxTitleW) else title
+        val titlePart = if (AnsiUtils.stripAnsi(clippedTitle).isNotBlank()) " $clippedTitle " else ""
+        val usedW = 4 + AnsiUtils.visualWidth(titlePart) + rightW
+        val fillW = (width - usedW).coerceAtLeast(0)
+        val line = "${theme.border}╭─${CliTheme.RESET}$titlePart${theme.border}${"─".repeat(fillW)}${CliTheme.RESET}$rightPart${theme.border}─╮${CliTheme.RESET}"
+        return AnsiUtils.fitToWidth(line, width)
+    }
+
+    fun renderBoxLine(content: String, width: Int): String {
+        val innerWidth = (width - 4).coerceAtLeast(1)
+        val fitted = AnsiUtils.fitToWidth(content, innerWidth)
+        return "${theme.border}│${CliTheme.RESET} $fitted ${theme.border}│${CliTheme.RESET}"
+    }
+
+    fun renderBoxBottom(width: Int, keybinds: String = ""): String {
+        val maxBindsW = (width - 6).coerceAtLeast(0)
+        val clippedBinds = if (AnsiUtils.visualWidth(keybinds) > maxBindsW) AnsiUtils.clipToWidth(keybinds, maxBindsW) else keybinds
+        val bindsPart = if (AnsiUtils.stripAnsi(clippedBinds).isNotBlank()) " $clippedBinds " else ""
+        val usedW = 4 + AnsiUtils.visualWidth(bindsPart)
+        val fillW = (width - usedW).coerceAtLeast(0)
+        val line = "${theme.border}╰─${CliTheme.RESET}$bindsPart${theme.border}${"─".repeat(fillW)}${CliTheme.RESET}${theme.border}─╯${CliTheme.RESET}"
+        return AnsiUtils.fitToWidth(line, width)
+    }
+
     fun render() {
         val size = terminal.size
         val width = if (size.columns > 0) size.columns else 80
         val height = if (size.rows > 0) size.rows else 24
 
+        // Prevent right-edge terminal autowrap jitter
+        val cardWidth = (width - 1).coerceAtLeast(20)
+
         val rows = ArrayList<String>(height)
 
-        // 1. Header (2 rows: title + tabs, horizontal border)
-        rows.add(buildHeader(width))
-        rows.add(theme.border + "─".repeat((width - 2).coerceAtLeast(10)) + CliTheme.RESET)
+        // 1. Top Header (1 row)
+        rows.add(buildHeader(cardWidth))
 
-        // 2. Body (height - 6 rows)
-        val bodyHeight = (height - 6).coerceAtLeast(4)
+        // 2. Body panels (innerHeight + 2 rows: Top border, inner lines, Bottom border)
+        // Player deck takes 4 rows (Top border, Line 1, Line 2, Bottom border)
+        // Total fixed rows = 1 (header) + 1 (body top) + 1 (body bottom) + 4 (player) = 7
+        val innerHeight = (height - 7).coerceAtLeast(3)
+
+        val leftTitle = when (currentView) {
+            TuiView.SEARCH -> "${theme.primary}[1] Search${CliTheme.RESET}"
+            TuiView.QUEUE -> "${theme.primary}[2] Playback Queue (${player.queue.size})${CliTheme.RESET}"
+            TuiView.FAVORITES -> "\u001B[1;38;2;255;75;130m[3] Favorites (${CliFavorites.count()})${CliTheme.RESET}"
+        }
+
+        val syncNotice = lyrics.offsetText.value?.let { "${theme.warning}(sync $it)${CliTheme.RESET}" } ?: ""
+        val lyricsLoading = if (lyrics.isLoading.value) "${theme.textMuted}(loading...)${CliTheme.RESET}" else ""
+        val rightMeta = listOf(syncNotice, lyricsLoading).filter { it.isNotBlank() }.joinToString(" ")
 
         when (layoutMode) {
             TuiLayout.ZEN -> {
-                // Queue is minimized: lyrics occupy full screen width
-                val fullWidth = (width - 2).coerceAtLeast(10)
-                val rightLines = renderRightPane(fullWidth, bodyHeight, isZen = true)
-                for (row in 0 until bodyHeight) {
-                    val line = rightLines.getOrElse(row) { "".padEnd(fullWidth) }
-                    rows.add(" $line")
+                // Queue minimized: Lyrics card spans full width
+                val innerZenWidth = (cardWidth - 4).coerceAtLeast(10)
+                val zenLines = renderRightPane(innerZenWidth, innerHeight, isZen = true)
+                rows.add(renderBoxTop(
+                    title = "${theme.secondary}Synced Lyrics${CliTheme.RESET}",
+                    width = cardWidth,
+                    rightMeta = "${theme.primary}[Zen Mode · z to restore]${CliTheme.RESET} $rightMeta".trim()
+                ))
+                for (r in 0 until innerHeight) {
+                    rows.add(renderBoxLine(zenLines.getOrElse(r) { "" }, cardWidth))
                 }
+                rows.add(renderBoxBottom(cardWidth))
             }
             TuiLayout.QUEUE_ONLY -> {
-                // Full-width Queue or Search list
-                val fullWidth = (width - 2).coerceAtLeast(10)
-                val leftLines = renderLeftPane(fullWidth, bodyHeight)
-                for (row in 0 until bodyHeight) {
-                    val line = leftLines.getOrElse(row) { "".padEnd(fullWidth) }
-                    rows.add(" $line")
+                // Full-width Queue / Search / Favorites card
+                val innerFullWidth = (cardWidth - 4).coerceAtLeast(10)
+                val leftLines = renderLeftPane(innerFullWidth, innerHeight)
+                rows.add(renderBoxTop(title = leftTitle, width = cardWidth))
+                for (r in 0 until innerHeight) {
+                    rows.add(renderBoxLine(leftLines.getOrElse(r) { "" }, cardWidth))
                 }
+                rows.add(renderBoxBottom(cardWidth))
             }
             TuiLayout.SPLIT -> {
-                // Default 50/50 split pane
-                val leftWidth = ((width - 3) / 2).coerceAtLeast(10)
-                val rightWidth = (width - 2 - leftWidth - 1).coerceAtLeast(10)
+                // Split Card layout: Left Card + Gap + Right Card
+                val gap = 1
+                val leftCardWidth = ((cardWidth - gap) / 2).coerceAtLeast(12)
+                val rightCardWidth = (cardWidth - gap - leftCardWidth).coerceAtLeast(12)
 
-                val leftLines = renderLeftPane(leftWidth, bodyHeight)
-                val rightLines = renderRightPane(rightWidth, bodyHeight, isZen = false)
+                val innerLeftWidth = (leftCardWidth - 4).coerceAtLeast(8)
+                val innerRightWidth = (rightCardWidth - 4).coerceAtLeast(8)
 
-                for (row in 0 until bodyHeight) {
-                    val left = leftLines.getOrElse(row) { "".padEnd(leftWidth) }
-                    val right = rightLines.getOrElse(row) { "".padEnd(rightWidth) }
-                    rows.add("$left ${theme.border}│${CliTheme.RESET} $right")
+                val leftLines = renderLeftPane(innerLeftWidth, innerHeight)
+                val rightLines = renderRightPane(innerRightWidth, innerHeight, isZen = false)
+
+                val leftTop = renderBoxTop(leftTitle, leftCardWidth)
+                val rightTop = renderBoxTop("${theme.secondary}Synced Lyrics${CliTheme.RESET}", rightCardWidth, rightMeta)
+                rows.add("$leftTop $rightTop")
+
+                for (r in 0 until innerHeight) {
+                    val leftLine = renderBoxLine(leftLines.getOrElse(r) { "" }, leftCardWidth)
+                    val rightLine = renderBoxLine(rightLines.getOrElse(r) { "" }, rightCardWidth)
+                    rows.add("$leftLine $rightLine")
                 }
+
+                val leftBottom = renderBoxBottom(leftCardWidth)
+                val rightBottom = renderBoxBottom(rightCardWidth)
+                rows.add("$leftBottom $rightBottom")
             }
         }
 
-        // 3. Footer (4 rows: separator, track info + visualizer, progress bar, keybindings)
-        rows.add(theme.border + "─".repeat((width - 2).coerceAtLeast(10)) + CliTheme.RESET)
-        rows.add(buildTrackInfo(width))
-        rows.add(buildProgressBar(width))
-        rows.add(buildKeybinds(width))
+        // 3. Player Deck Card (4 rows: Top border, Line 1, Line 2, Bottom border)
+        val playerInnerWidth = (cardWidth - 4).coerceAtLeast(10)
+        val codecInfo = player.streamInfo.value?.let { "${theme.border}[${theme.textMuted}$it${theme.border}]${CliTheme.RESET}" } ?: ""
+
+        rows.add(renderBoxTop(
+            title = "${theme.primary}Now Playing${CliTheme.RESET}",
+            width = cardWidth,
+            rightMeta = codecInfo
+        ))
+        rows.add(renderBoxLine(buildPlayerDeckLine1(playerInnerWidth), cardWidth))
+        rows.add(renderBoxLine(buildPlayerDeckLine2(playerInnerWidth), cardWidth))
+        rows.add(renderBoxBottom(cardWidth, keybinds = buildPlayerKeybinds(playerInnerWidth)))
 
         // Position line-by-line using absolute cursor coordinates with zero newline \n
         val sb = StringBuilder()
@@ -217,7 +287,8 @@ class TuiRenderer(
             " ${theme.primary}🎵 BITCHORD${CliTheme.RESET}"
         }
 
-        val queueCount = player.queue.size
+        val qCount = player.queue.size
+        val fCount = CliFavorites.count()
         val shufBadge = if (player.isShuffle.value) " ${theme.secondary}[🔀 SHUF]${CliTheme.RESET}" else ""
         val repBadge = when (player.repeatMode.value) {
             CliRepeatMode.ALL -> " ${theme.primary}[🔁 ALL]${CliTheme.RESET}"
@@ -225,118 +296,162 @@ class TuiRenderer(
             CliRepeatMode.OFF -> ""
         }
 
+        val tabSearch = if (currentView == TuiView.SEARCH) "${theme.highlightBg} [1] SEARCH ${CliTheme.RESET}" else "${theme.textMuted}[1] SEARCH${CliTheme.RESET}"
+        val tabQueue = if (currentView == TuiView.QUEUE) "${theme.highlightBg} [2] QUEUE ($qCount) ${CliTheme.RESET}" else "${theme.textMuted}[2] QUEUE ($qCount)${CliTheme.RESET}"
+        val tabFav = if (currentView == TuiView.FAVORITES) "${theme.highlightBg} [3] FAV ($fCount) ${CliTheme.RESET}" else "${theme.textMuted}[3] FAV ($fCount)${CliTheme.RESET}"
+
         val viewTabs = when (layoutMode) {
-            TuiLayout.ZEN -> {
-                "${theme.textMuted}[1] SEARCH  [2] QUEUE ($queueCount) ${CliTheme.RESET}${theme.primary}[z: EXPAND QUEUE]${CliTheme.RESET}$shufBadge$repBadge"
-            }
-            TuiLayout.QUEUE_ONLY -> {
-                if (currentView == TuiView.SEARCH) {
-                    "${theme.highlightBg} [1] SEARCH ${CliTheme.RESET} ${theme.textMuted} [2] QUEUE ($queueCount)$shufBadge$repBadge ${CliTheme.RESET}${theme.secondary}[v: SPLIT]${CliTheme.RESET}"
-                } else {
-                    "${theme.textMuted} [1] SEARCH ${CliTheme.RESET} ${theme.highlightBg} [2] QUEUE ($queueCount)$shufBadge$repBadge ${CliTheme.RESET}${theme.secondary}[v: SPLIT]${CliTheme.RESET}"
-                }
-            }
-            TuiLayout.SPLIT -> {
-                if (currentView == TuiView.SEARCH) {
-                    "${theme.highlightBg} [1] SEARCH ${CliTheme.RESET} ${theme.textMuted} [2] QUEUE ($queueCount)$shufBadge$repBadge ${CliTheme.RESET}"
-                } else {
-                    "${theme.textMuted} [1] SEARCH ${CliTheme.RESET} ${theme.highlightBg} [2] QUEUE ($queueCount)$shufBadge$repBadge ${CliTheme.RESET}"
-                }
-            }
+            TuiLayout.ZEN -> "$tabSearch  $tabQueue  $tabFav ${theme.primary}[z: EXPAND]${CliTheme.RESET}$shufBadge$repBadge"
+            TuiLayout.QUEUE_ONLY -> "$tabSearch  $tabQueue  $tabFav ${theme.secondary}[v: SPLIT]${CliTheme.RESET}$shufBadge$repBadge"
+            TuiLayout.SPLIT -> "$tabSearch  $tabQueue  $tabFav ${theme.textMuted}[z: ZEN]${CliTheme.RESET}$shufBadge$repBadge"
         }
 
         val titleW = AnsiUtils.visualWidth(title)
         val tabsW = AnsiUtils.visualWidth(viewTabs)
-        val spacing = (width - 1 - titleW - tabsW).coerceAtLeast(1)
+        val spacing = (width - titleW - tabsW).coerceAtLeast(1)
 
         val combined = title + " ".repeat(spacing) + viewTabs
-        return AnsiUtils.fitToWidth(combined, width - 1)
+        return AnsiUtils.fitToWidth(combined, width)
     }
 
     private fun renderLeftPane(width: Int, height: Int): List<String> {
         val lines = mutableListOf<String>()
 
-        if (currentView == TuiView.SEARCH) {
-            val promptPrefix = if (isSearchingInput) {
-                "${theme.warning}Search/URL: ${theme.text}$searchQuery\u001B[7m ${CliTheme.RESET}"
-            } else if (isSearchingNetwork) {
-                "${theme.primary}Fetching from YouTube Music: \"$searchQuery\"...${CliTheme.RESET}"
-            } else if (searchQuery.isNotBlank()) {
-                "${theme.textMuted}Search (press / to edit or paste URL): ${theme.text}$searchQuery${CliTheme.RESET}"
-            } else {
-                "${theme.textMuted}Press / to search songs, playlists (p:), or paste YouTube link${CliTheme.RESET}"
-            }
-            lines.add(AnsiUtils.fitToWidth(promptPrefix, width))
-            lines.add(theme.border + "┄".repeat((width - 1).coerceAtLeast(5)) + CliTheme.RESET)
-
-            val listRows = height - 2
-            if (searchResults.isEmpty()) {
-                lines.add(AnsiUtils.fitToWidth("  ${theme.textMuted}No search results. Press / to search or paste a playlist.${CliTheme.RESET}", width))
-                while (lines.size < height) lines.add("".padEnd(width))
-                return lines
-            }
-
-            val selected = selectedSearchIndex.coerceIn(0, searchResults.size - 1)
-            val startIdx = (selected - listRows / 2).coerceAtLeast(0)
-                .coerceAtMost((searchResults.size - listRows).coerceAtLeast(0))
-
-            for (i in startIdx until minOf(searchResults.size, startIdx + listRows)) {
-                val song = searchResults[i]
-                val isSelected = (i == selected)
-                val duration = song.durationText ?: ""
-                val durPadding = if (duration.isNotBlank()) " [$duration]" else ""
-                val availableForTitle = (width - duration.length - 8).coerceAtLeast(10)
-                val fullTitle = "${song.title} - ${song.artist}"
-                val clipped = fullTitle.take(availableForTitle)
-
-                val line = if (isSelected) {
-                    "${theme.highlightBg} > $clipped$durPadding ${CliTheme.RESET}"
+        when (currentView) {
+            TuiView.SEARCH -> {
+                val promptPrefix = if (isSearchingInput) {
+                    "${theme.warning}Search/URL: ${theme.text}$searchQuery\u001B[7m ${CliTheme.RESET}"
+                } else if (isSearchingNetwork) {
+                    "${theme.primary}Fetching from YouTube Music: \"$searchQuery\"...${CliTheme.RESET}"
+                } else if (searchQuery.isNotBlank()) {
+                    "${theme.textMuted}Search: ${theme.text}$searchQuery ${theme.textMuted}(press / to edit)${CliTheme.RESET}"
                 } else {
-                    "   ${theme.text}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
+                    "${theme.textMuted}Press / to search songs, playlists (p:), or paste URL${CliTheme.RESET}"
                 }
-                lines.add(AnsiUtils.fitToWidth(line, width))
+                lines.add(AnsiUtils.fitToWidth(promptPrefix, width))
+                lines.add(theme.border + "┄".repeat((width - 1).coerceAtLeast(5)) + CliTheme.RESET)
+
+                val listRows = height - 2
+                if (searchResults.isEmpty()) {
+                    lines.add(AnsiUtils.fitToWidth("  ${theme.textMuted}No search results. Press / to search songs or paste playlist URL.${CliTheme.RESET}", width))
+                    while (lines.size < height) lines.add("".padEnd(width))
+                    return lines
+                }
+
+                val selected = selectedSearchIndex.coerceIn(0, searchResults.size - 1)
+                val startIdx = (selected - listRows / 2).coerceAtLeast(0)
+                    .coerceAtMost((searchResults.size - listRows).coerceAtLeast(0))
+
+                for (i in startIdx until minOf(searchResults.size, startIdx + listRows)) {
+                    val song = searchResults[i]
+                    val isSelected = (i == selected)
+                    val duration = song.durationText ?: ""
+                    val durPadding = if (duration.isNotBlank()) " [$duration]" else ""
+                    val isFav = CliFavorites.isFavorite(song.videoId)
+                    val favSlot = if (isFav) "\u001B[1;38;2;255;75;130m♥${CliTheme.RESET} " else "  "
+
+                    val availableForTitle = (width - duration.length - 10).coerceAtLeast(8)
+                    val fullTitle = "${song.title} - ${song.artist}"
+                    val clipped = fullTitle.take(availableForTitle)
+
+                    val line = if (isSelected) {
+                        "${theme.highlightBg} > $favSlot$clipped$durPadding ${CliTheme.RESET}"
+                    } else {
+                        "   $favSlot${theme.text}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
+                    }
+                    lines.add(AnsiUtils.fitToWidth(line, width))
+                }
             }
-        } else {
-            val qTitle = " ${theme.primary}Playback Queue (${player.queue.size} songs)${CliTheme.RESET}"
-            lines.add(AnsiUtils.fitToWidth(qTitle, width))
-            lines.add(theme.border + "┄".repeat((width - 1).coerceAtLeast(5)) + CliTheme.RESET)
+            TuiView.QUEUE -> {
+                val qHeader = "${theme.textMuted}Queue (${player.queue.size} songs) · [Enter]Play [a]Add [c]Clear${CliTheme.RESET}"
+                lines.add(AnsiUtils.fitToWidth(qHeader, width))
+                lines.add(theme.border + "┄".repeat((width - 1).coerceAtLeast(5)) + CliTheme.RESET)
 
-            val listRows = height - 2
-            val queue = player.queue
-            if (queue.isEmpty()) {
-                lines.add(AnsiUtils.fitToWidth("  ${theme.textMuted}Queue is empty. Search songs or paste playlist URL.${CliTheme.RESET}", width))
-                while (lines.size < height) lines.add("".padEnd(width))
-                return lines
+                val listRows = height - 2
+                val queue = player.queue
+                if (queue.isEmpty()) {
+                    lines.add(AnsiUtils.fitToWidth("  ${theme.textMuted}Queue is empty. Search songs or paste playlist URL.${CliTheme.RESET}", width))
+                    while (lines.size < height) lines.add("".padEnd(width))
+                    return lines
+                }
+
+                val selected = selectedQueueIndex.coerceIn(0, queue.size - 1)
+                val startIdx = (selected - listRows / 2).coerceAtLeast(0)
+                    .coerceAtMost((queue.size - listRows).coerceAtLeast(0))
+
+                for (i in startIdx until minOf(queue.size, startIdx + listRows)) {
+                    val song = queue[i]
+                    val isCurrent = (i == player.queueIndex)
+                    val isSelected = (i == selected)
+                    val isFav = CliFavorites.isFavorite(song.videoId)
+                    val favSlot = if (isFav) "\u001B[1;38;2;255;75;130m♥${CliTheme.RESET} " else "  "
+
+                    val prefix = when {
+                        isCurrent && isSelected -> "${theme.accent}▶>${CliTheme.RESET}"
+                        isCurrent -> "${theme.accent} ▶${CliTheme.RESET}"
+                        isSelected -> " >"
+                        else -> "  "
+                    }
+                    val duration = song.durationText ?: ""
+                    val durPadding = if (duration.isNotBlank()) " [$duration]" else ""
+                    val availableForTitle = (width - duration.length - 12).coerceAtLeast(8)
+                    val fullTitle = "${i + 1}. ${song.title} - ${song.artist}"
+                    val clipped = fullTitle.take(availableForTitle)
+
+                    val line = if (isSelected) {
+                        "${theme.highlightBg}$prefix $favSlot$clipped$durPadding ${CliTheme.RESET}"
+                    } else if (isCurrent) {
+                        "$prefix $favSlot${theme.accent}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
+                    } else {
+                        "$prefix $favSlot${theme.text}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
+                    }
+                    lines.add(AnsiUtils.fitToWidth(line, width))
+                }
             }
+            TuiView.FAVORITES -> {
+                val fHeader = "${theme.textMuted}Starred Favorites (${CliFavorites.count()} songs) · [Enter]Play [d]Remove${CliTheme.RESET}"
+                lines.add(AnsiUtils.fitToWidth(fHeader, width))
+                lines.add(theme.border + "┄".repeat((width - 1).coerceAtLeast(5)) + CliTheme.RESET)
 
-            val selected = selectedQueueIndex.coerceIn(0, queue.size - 1)
-            val startIdx = (selected - listRows / 2).coerceAtLeast(0)
-                .coerceAtMost((queue.size - listRows).coerceAtLeast(0))
-
-            for (i in startIdx until minOf(queue.size, startIdx + listRows)) {
-                val song = queue[i]
-                val isCurrent = (i == player.queueIndex)
-                val isSelected = (i == selected)
-                val prefix = when {
-                    isCurrent && isSelected -> "${theme.accent}▶>${CliTheme.RESET}"
-                    isCurrent -> "${theme.accent} ▶${CliTheme.RESET}"
-                    isSelected -> " >"
-                    else -> "  "
+                val listRows = height - 2
+                val favs = CliFavorites.getFavorites()
+                if (favs.isEmpty()) {
+                    lines.add(AnsiUtils.fitToWidth("  ${theme.textMuted}No favorites saved yet.${CliTheme.RESET}", width))
+                    lines.add(AnsiUtils.fitToWidth("  ${theme.textMuted}Press 'f' while playing any song to add it!${CliTheme.RESET}", width))
+                    while (lines.size < height) lines.add("".padEnd(width))
+                    return lines
                 }
-                val duration = song.durationText ?: ""
-                val durPadding = if (duration.isNotBlank()) " [$duration]" else ""
-                val availableForTitle = (width - duration.length - 8).coerceAtLeast(10)
-                val fullTitle = "${i + 1}. ${song.title} - ${song.artist}"
-                val clipped = fullTitle.take(availableForTitle)
 
-                val line = if (isSelected) {
-                    "${theme.highlightBg}$prefix $clipped$durPadding ${CliTheme.RESET}"
-                } else if (isCurrent) {
-                    "$prefix ${theme.accent}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
-                } else {
-                    "$prefix ${theme.text}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
+                val selected = selectedFavoritesIndex.coerceIn(0, favs.size - 1)
+                val startIdx = (selected - listRows / 2).coerceAtLeast(0)
+                    .coerceAtMost((favs.size - listRows).coerceAtLeast(0))
+
+                for (i in startIdx until minOf(favs.size, startIdx + listRows)) {
+                    val song = favs[i]
+                    val isCurrent = (song.videoId == player.currentTrack.value?.videoId)
+                    val isSelected = (i == selected)
+                    val prefix = when {
+                        isCurrent && isSelected -> "${theme.accent}▶>${CliTheme.RESET}"
+                        isCurrent -> "${theme.accent} ▶${CliTheme.RESET}"
+                        isSelected -> " >"
+                        else -> "  "
+                    }
+                    val favSlot = "\u001B[1;38;2;255;75;130m♥${CliTheme.RESET} "
+                    val duration = song.durationText ?: ""
+                    val durPadding = if (duration.isNotBlank()) " [$duration]" else ""
+                    val availableForTitle = (width - duration.length - 12).coerceAtLeast(8)
+                    val fullTitle = "${i + 1}. ${song.title} - ${song.artist}"
+                    val clipped = fullTitle.take(availableForTitle)
+
+                    val line = if (isSelected) {
+                        "${theme.highlightBg}$prefix $favSlot$clipped$durPadding ${CliTheme.RESET}"
+                    } else if (isCurrent) {
+                        "$prefix $favSlot${theme.accent}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
+                    } else {
+                        "$prefix $favSlot${theme.text}$clipped${theme.textMuted}$durPadding${CliTheme.RESET}"
+                    }
+                    lines.add(AnsiUtils.fitToWidth(line, width))
                 }
-                lines.add(AnsiUtils.fitToWidth(line, width))
             }
         }
 
@@ -348,12 +463,8 @@ class TuiRenderer(
         val lines = mutableListOf<String>()
         val track = player.currentTrack.value
 
-        val syncNotice = lyrics.offsetText.value?.let { " ${theme.warning}(sync $it)${CliTheme.RESET}" } ?: ""
-        val zenBadge = if (isZen) " ${theme.textMuted}[Queue Minimized · press z to restore]${CliTheme.RESET}" else ""
-        val titleText = " ${theme.secondary}Synced Lyrics${CliTheme.RESET}$syncNotice$zenBadge" +
-            if (lyrics.isLoading.value) " ${theme.textMuted}(loading...)${CliTheme.RESET}" else ""
-
-        lines.add(AnsiUtils.fitToWidth(titleText, width))
+        val headerText = "${theme.textMuted}Real-time synced lyrics · [[/]] adjust sync offset${CliTheme.RESET}"
+        lines.add(AnsiUtils.fitToWidth(headerText, width))
         lines.add(theme.border + "┄".repeat((width - 1).coerceAtLeast(5)) + CliTheme.RESET)
 
         val lyricRows = height - 2
@@ -374,7 +485,7 @@ class TuiRenderer(
             }
             lines.add(AnsiUtils.fitToWidth(msg, width))
             if (isZen && player.isPlaying.value) {
-                // Show a nice center visualizer if no lyrics in zen mode
+                // Large visualizer in center when no lyrics in Zen mode
                 lines.add("")
                 lines.add(AnsiUtils.fitToWidth("     ${theme.visualizer}♫ ${renderVisualizer(player.visualizerBands.value)}${CliTheme.RESET}", width))
             }
@@ -382,7 +493,7 @@ class TuiRenderer(
             return lines
         }
 
-        // Center current lyric line in the pane
+        // Center active lyric line
         val activeLine = curIdx.coerceIn(0, allLyrics.size - 1)
         val half = lyricRows / 2
         val startIdx = (activeLine - half).coerceAtLeast(0)
@@ -393,7 +504,7 @@ class TuiRenderer(
         for (i in startIdx until minOf(allLyrics.size, startIdx + lyricRows)) {
             val lyric = allLyrics[i]
             val isActive = (i == curIdx)
-            val maxTextWidth = (width - indent.length - 8).coerceAtLeast(10)
+            val maxTextWidth = (width - indent.length - 8).coerceAtLeast(8)
             val clippedText = lyric.text.take(maxTextWidth)
 
             val line = if (isActive) {
@@ -420,37 +531,42 @@ class TuiRenderer(
         return sb.toString()
     }
 
-    private fun buildTrackInfo(width: Int): String {
+    private fun buildPlayerDeckLine1(width: Int): String {
         val track = player.currentTrack.value
         val isPlaying = player.isPlaying.value
         val isBuffering = player.isBuffering.value
 
-        val stateIcon = when {
-            isBuffering -> "${theme.warning}⏳ BUFFERING${CliTheme.RESET}"
-            isPlaying -> "${theme.accent}▶ PLAYING${CliTheme.RESET}"
-            track != null -> "${theme.warning}⏸ PAUSED${CliTheme.RESET}"
-            else -> "${theme.textMuted}⏹ STOPPED${CliTheme.RESET}"
+        val stateBadge = when {
+            isBuffering -> "${theme.warning}[⏳ BUFFERING]${CliTheme.RESET}"
+            isPlaying -> "${theme.accent}[▶ PLAYING]${CliTheme.RESET}"
+            track != null -> "${theme.warning}[⏸ PAUSED]${CliTheme.RESET}"
+            else -> "${theme.textMuted}[⏹ STOPPED]${CliTheme.RESET}"
         }
 
         val trackInfo = if (track != null) {
-            "${theme.text}\u001B[1m${track.title}${CliTheme.RESET} ${theme.textMuted}by${CliTheme.RESET} ${theme.primary}${track.artist}${CliTheme.RESET}"
+            "${theme.text}\u001B[1m${track.title}${CliTheme.RESET} ${theme.textMuted}•${CliTheme.RESET} ${theme.secondary}${track.artist}${CliTheme.RESET}"
         } else {
-            "${theme.textMuted}Nothing playing${CliTheme.RESET}"
+            "${theme.textMuted}Nothing playing — press / to search or 2 to view queue${CliTheme.RESET}"
         }
+
+        val isFav = CliFavorites.isFavorite(track?.videoId)
+        val favBadge = if (isFav) {
+            " \u001B[1;38;2;255;75;130m♥ FAV${CliTheme.RESET}"
+        } else if (track != null) {
+            " ${theme.textMuted}♡${CliTheme.RESET}"
+        } else ""
 
         val vizStr = if (isPlaying) {
-            " ${theme.visualizer}♫ ${renderVisualizer(player.visualizerBands.value)}${CliTheme.RESET}"
-        } else {
-            ""
-        }
+            "  ${theme.visualizer}♫ ${renderVisualizer(player.visualizerBands.value)}${CliTheme.RESET}"
+        } else ""
 
-        val codecInfo = player.streamInfo.value?.let { " ${theme.textMuted}[$it]${CliTheme.RESET}" } ?: ""
         val status = player.statusMessage.value?.let { " ${theme.warning}[$it]${CliTheme.RESET}" } ?: ""
 
-        return AnsiUtils.fitToWidth(" $stateIcon  $trackInfo$vizStr$codecInfo$status", width - 1)
+        val line = "$stateBadge  $trackInfo$favBadge$vizStr$status"
+        return AnsiUtils.fitToWidth(line, width)
     }
 
-    private fun buildProgressBar(width: Int): String {
+    private fun buildPlayerDeckLine2(width: Int): String {
         val posMs = player.positionMs.value
         val durMs = player.durationMs.value
         val volPct = (player.volume.value * 100).toInt()
@@ -460,35 +576,102 @@ class TuiRenderer(
         val posStr = formatTime(posSec)
         val durStr = formatTime(durSec)
 
-        val volLabel = if (player.isMuted.value) "\u001B[1;31mMUTED${CliTheme.RESET}" else "${theme.text}$volPct%${CliTheme.RESET}"
-        val shufTag = if (player.isShuffle.value) " ${theme.secondary}🔀${CliTheme.RESET}" else ""
-        val repTag = when (player.repeatMode.value) {
-            CliRepeatMode.ALL -> " ${theme.primary}🔁${CliTheme.RESET}"
-            CliRepeatMode.ONE -> " ${theme.warning}🔂${CliTheme.RESET}"
+        val progress = if (durSec > 0) (posSec.toDouble() / durSec).coerceIn(0.0, 1.0) else 0.0
+        val pctInt = (progress * 100).toInt()
+        val pctStr = "%2d%%".format(pctInt)
+
+        val volBadge = if (player.isMuted.value) {
+            "\u001B[1;31m[🔇 MUTED]${CliTheme.RESET}"
+        } else {
+            "${theme.textMuted}Vol: ${theme.text}$volPct%${CliTheme.RESET}"
+        }
+
+        val shufBadge = if (player.isShuffle.value) " ${theme.secondary}[⇄ SHUF]${CliTheme.RESET}" else ""
+        val repBadge = when (player.repeatMode.value) {
+            CliRepeatMode.ALL -> " ${theme.primary}[↻ ALL]${CliTheme.RESET}"
+            CliRepeatMode.ONE -> " ${theme.warning}[↻ 1]${CliTheme.RESET}"
             CliRepeatMode.OFF -> ""
         }
 
-        val barAvailable = (width - 32).coerceAtLeast(10)
-        val progress = if (durSec > 0) (posSec.toDouble() / durSec).coerceIn(0.0, 1.0) else 0.0
-        val filled = (progress * barAvailable).toInt()
+        // Fixed-width parts: 0:39 [ ] 38% 4:33  [⇄ SHUF]  Vol: 80%
+        val fixedText = "$posStr [] $pctStr $durStr$shufBadge$repBadge   $volBadge"
+        val fixedW = AnsiUtils.visualWidth(fixedText)
+        val barAvailable = (width - fixedW).coerceAtLeast(8)
+        val filled = (progress * barAvailable).toInt().coerceIn(0, barAvailable)
         val empty = (barAvailable - filled).coerceAtLeast(0)
-        val bar = theme.progressBar + "━".repeat(filled) + theme.progressEmpty + "─".repeat(empty) + CliTheme.RESET
 
-        return AnsiUtils.fitToWidth(" $posStr [$bar] $durStr$shufTag$repTag  ${theme.textMuted}Vol: $volLabel", width - 1)
+        val bar = theme.progressBar + "█".repeat(filled) + theme.progressEmpty + "░".repeat(empty) + CliTheme.RESET
+        val line = "$posStr [$bar] ${theme.primary}$pctStr${CliTheme.RESET} $durStr$shufBadge$repBadge   $volBadge"
+        return AnsiUtils.fitToWidth(line, width)
     }
 
-    private fun buildKeybinds(width: Int): String {
-        val zenLabel = if (layoutMode == TuiLayout.ZEN) "Queue" else "Zen"
-        val full = "${theme.textMuted}[z]${theme.text}$zenLabel ${theme.textMuted}[t]${theme.text}Theme ${theme.textMuted}[Space]${theme.text}Play ${theme.textMuted}[j/k]${theme.text}Nav ${theme.textMuted}[Enter]${theme.text}Select ${theme.textMuted}[s]${theme.text}Shuf ${theme.textMuted}[r]${theme.text}Rep ${theme.textMuted}[m]${theme.text}Mute ${theme.textMuted}[a]${theme.text}Queue ${theme.textMuted}[n/p]${theme.text}Track ${theme.textMuted}[h/l]${theme.text}±5s ${theme.textMuted}[H/L]${theme.text}±15s ${theme.textMuted}[[//]]${theme.text}Sync ${theme.textMuted}[//]${theme.text}Search ${theme.textMuted}[Tab]${theme.text}View ${theme.textMuted}[q]${theme.text}Quit${CliTheme.RESET}"
-        val compact = "${theme.textMuted}[z]${theme.text}$zenLabel ${theme.textMuted}[t]${theme.text}Theme ${theme.textMuted}[Space]${theme.text}Play ${theme.textMuted}[j/k]${theme.text}Nav ${theme.textMuted}[s]${theme.text}Shuf ${theme.textMuted}[r]${theme.text}Rep ${theme.textMuted}[m]${theme.text}Mute ${theme.textMuted}[n/p]${theme.text}Track ${theme.textMuted}[h/l]${theme.text}Seek ${theme.textMuted}[//]${theme.text}Search ${theme.textMuted}[Tab]${theme.text}View ${theme.textMuted}[q]${theme.text}Quit${CliTheme.RESET}"
-        val minimal = "${theme.textMuted}[z]${theme.text}$zenLabel ${theme.textMuted}[t]${theme.text}Theme ${theme.textMuted}[Space]${theme.text}Play ${theme.textMuted}[s]${theme.text}Shuf ${theme.textMuted}[r]${theme.text}Rep ${theme.textMuted}[//]${theme.text}Search ${theme.textMuted}[Tab]${theme.text}View ${theme.textMuted}[q]${theme.text}Quit${CliTheme.RESET}"
+    private fun buildPlayerKeybinds(width: Int): String {
+        fun k(key: String, label: String): String =
+            "${theme.border}[${theme.primary}$key${theme.border}]${theme.text}$label${CliTheme.RESET}"
 
-        val binds = when {
-            width >= 120 -> full
-            width >= 92 -> compact
+        val zenLabel = if (layoutMode == TuiLayout.ZEN) "Queue" else "Zen"
+
+        val full = listOf(
+            k("Space", "Play"),
+            k("f", "Fav"),
+            k("z", zenLabel),
+            k("t", "Theme"),
+            k("j/k", "Nav"),
+            k("Enter", "Select"),
+            k("s", "Shuf"),
+            k("r", "Rep"),
+            k("m", "Mute"),
+            k("a", "Queue"),
+            k("n/p", "Track"),
+            k("h/l", "±5s"),
+            k("[/]", "Sync"),
+            k("/", "Search"),
+            k("Tab", "Tabs"),
+            k("q", "Quit"),
+        ).joinToString(" ")
+
+        val medium = listOf(
+            k("Space", "Play"),
+            k("f", "Fav"),
+            k("z", zenLabel),
+            k("t", "Theme"),
+            k("j/k", "Nav"),
+            k("Enter", "Select"),
+            k("s", "Shuf"),
+            k("r", "Rep"),
+            k("m", "Mute"),
+            k("/", "Search"),
+            k("Tab", "Tabs"),
+            k("q", "Quit"),
+        ).joinToString(" ")
+
+        val compact = listOf(
+            k("Space", "Play"),
+            k("f", "Fav"),
+            k("z", zenLabel),
+            k("t", "Theme"),
+            k("s", "Shuf"),
+            k("r", "Rep"),
+            k("/", "Search"),
+            k("Tab", "Tabs"),
+            k("q", "Quit"),
+        ).joinToString(" ")
+
+        val minimal = listOf(
+            k("Space", "Play"),
+            k("f", "Fav"),
+            k("z", zenLabel),
+            k("t", "Theme"),
+            k("Tab", "Tabs"),
+            k("q", "Quit"),
+        ).joinToString(" ")
+
+        return when {
+            width >= 130 -> full
+            width >= 96 -> medium
+            width >= 75 -> compact
             else -> minimal
         }
-        return AnsiUtils.fitToWidth(" $binds", width - 1)
     }
 
     private fun formatTime(sec: Long): String {
