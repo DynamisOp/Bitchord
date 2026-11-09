@@ -4646,11 +4646,6 @@ private fun DesktopTopBar(
                 }
             }
             }
-            HorizontalDivider(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                thickness = 1.dp,
-                color = desktopChromeDivider(),
-            )
         }
     }
 }
@@ -4847,13 +4842,6 @@ private fun DesktopSidebar(
             }
         }
         }
-        Box(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .width(1.dp)
-                .fillMaxHeight()
-                .background(desktopChromeDivider()),
-        )
     }
 }
 
@@ -6689,7 +6677,7 @@ private fun DesktopSettingsFooter(onLicenses: () -> Unit) {
                 append("GitHub")
             }
             append("  ")
-            withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx", linkStyles)) {
+            withLink(LinkAnnotation.Url("https://github.com/DynamisOp", linkStyles)) {
                 append("Developer")
             }
             append("  ")
@@ -7482,7 +7470,7 @@ internal fun desktopChromeDivider(): Color {
     return when {
         backdrop == DesktopBackdrop.ACRYLIC -> Color.White.copy(alpha = 0.14f)
         DesktopPlatform.isMac && backdrop != DesktopBackdrop.OFF -> Color.White.copy(alpha = 0.10f)
-        else -> DesktopDivider
+        else -> Color.White.copy(alpha = 0.08f)
     }
 }
 

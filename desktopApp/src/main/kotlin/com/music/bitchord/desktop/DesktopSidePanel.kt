@@ -60,7 +60,6 @@ internal fun DesktopSidePanelColumn(
             fadeOut(tween(SLIDE_MS / 2)),
     ) {
         Row(Modifier.width(SIDE_PANEL_WIDTH).fillMaxHeight()) {
-            Box(Modifier.width(1.dp).fillMaxHeight().background(DesktopDivider))
             Crossfade(
                 targetState = shown ?: return@Row,
                 animationSpec = tween(CROSSFADE_MS),

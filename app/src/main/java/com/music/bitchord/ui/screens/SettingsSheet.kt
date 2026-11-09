@@ -1801,7 +1801,7 @@ fun SettingsScreen(
                     append("GitHub")
                 }
                 append("  ")
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx", linkStyles)) {
+                withLink(LinkAnnotation.Url("https://github.com/DynamisOp", linkStyles)) {
                     append("Developer")
                 }
                 append("  ")
