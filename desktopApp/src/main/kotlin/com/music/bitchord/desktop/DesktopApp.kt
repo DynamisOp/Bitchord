@@ -4524,15 +4524,17 @@ private fun DesktopTopBar(
                         Modifier.weight(1f).padding(horizontal = 14.dp),
                         contentAlignment = Alignment.Center,
                     ) {
+                        val pillShape = RoundedCornerShape(percent = 50)
                         Surface(
                             modifier = Modifier
                                 .widthIn(min = 300.dp, max = 520.dp)
                                 .fillMaxWidth()
                                 .height(46.dp)
-                                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(4.dp))
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(pillShape)
+                                .border(1.dp, Color.White.copy(alpha = 0.10f), pillShape)
                                 .clickable(onClick = onOpenNowPlaying),
-                            color = Color(0xFF323236),
+                            shape = pillShape,
+                            color = Color(0xFF2A2A2E).copy(alpha = 0.70f),
                             tonalElevation = 0.dp,
                         ) {
                             Box(Modifier.fillMaxSize()) {
@@ -4546,14 +4548,17 @@ private fun DesktopTopBar(
                                         )
                                     }
                                 } else {
-                                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
                                         DesktopArtwork(
                                             song.thumbnailUrl,
-                                            Modifier.size(44.dp).clip(RoundedCornerShape(3.dp)),
+                                            Modifier.size(38.dp).clip(CircleShape),
                                             px = ROW_ART_PX,
                                         )
                                         Column(
-                                            Modifier.weight(1f).padding(start = 12.dp, end = 56.dp),
+                                            Modifier.weight(1f).padding(start = 12.dp, end = 38.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                         ) {
                                             Text(
@@ -4579,9 +4584,10 @@ private fun DesktopTopBar(
                                     Box(
                                         Modifier
                                             .align(Alignment.BottomStart)
-                                            .padding(start = 44.dp)
+                                            .padding(start = 48.dp, end = 20.dp)
                                             .fillMaxWidth()
                                             .height(2.dp)
+                                            .clip(RoundedCornerShape(1.dp))
                                             .drawBehind {
                                                 val base = currentProgress.coerceIn(0f, 1f)
                                                 val fraction = base + (1f - base) * mixPulse.cover
