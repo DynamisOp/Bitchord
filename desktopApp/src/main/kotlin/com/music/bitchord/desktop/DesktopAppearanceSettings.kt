@@ -14,10 +14,10 @@ internal object DesktopAppearanceSettings {
     private fun flag(key: String, default: Boolean) =
         MutableStateFlow(DesktopPersistence().boolean(key, default))
 
-    private val _reduceAnimation = flag(KEY_REDUCE_ANIMATION, false)
-    private val _reduceDynamicBlur = flag(KEY_REDUCE_DYNAMIC_BLUR, false)
+    private val _reduceAnimation = flag(KEY_REDUCE_ANIMATION, true)
+    private val _reduceDynamicBlur = flag(KEY_REDUCE_DYNAMIC_BLUR, true)
     private val _hideVolumeBar = flag(KEY_HIDE_VOLUME_BAR, false)
-    private val _ambientBackdrop = flag(KEY_AMBIENT_BACKDROP, true)
+    private val _ambientBackdrop = flag(KEY_AMBIENT_BACKDROP, false)
     private val _performanceGlass = flag(KEY_PERFORMANCE_GLASS, true)
 
     /** Freezes the main player's gradient instead of drifting. */

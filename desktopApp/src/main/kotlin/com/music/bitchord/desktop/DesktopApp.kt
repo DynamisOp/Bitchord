@@ -348,14 +348,14 @@ import org.jetbrains.compose.resources.painterResource
  */
 internal val DesktopPageGutter = PAGE_GUTTER
 
-internal val DesktopBackground = Color(0xFF202020)
-internal val DesktopSurface = Color(0xFF0D0D0F)
-private val DesktopSurfaceRaised = Color(0xFF1C1C1E)
-internal val DesktopGlass = Color(0x661C1C1E)
-internal val DesktopGlassStrong = Color(0xCC0D0D0F)
+internal val DesktopBackground = Color(0xFF101012)
+internal val DesktopSurface = Color(0xFF161618)
+private val DesktopSurfaceRaised = Color(0xFF222226)
+internal val DesktopGlass = Color(0xFF1C1C1E)
+internal val DesktopGlassStrong = Color(0xFF161618)
 
 /** The floating bars in the narrow layout. */
-private val DesktopBarGlass = Color(0xB324242A)
+private val DesktopBarGlass = Color(0xFF222226)
 
 /** The backdrop the floating bars blur. */
 private val LocalDesktopHaze = staticCompositionLocalOf<HazeState?> { null }
@@ -695,7 +695,7 @@ fun BitChordDesktopApp() {
     var outputPrecision by remember { mutableStateOf(persistence.string("output_precision", "PCM_16")) }
     // The blob backdrop the mesh replaced, kept as an opt-out.
     var legacyMeshGradient by remember { mutableStateOf(persistence.boolean("legacy_mesh_gradient", false)) }
-    var animatedCanvas by remember { mutableStateOf(persistence.boolean("animated_canvas", true)) }
+    var animatedCanvas by remember { mutableStateOf(persistence.boolean("animated_canvas", false)) }
     var spotifyCanvasCookie by remember { mutableStateOf(DesktopSpotifyToken.cookie()) }
     // Held here rather than by the Integrations page, so leaving the page does not close the
     // sign-in window.
@@ -706,7 +706,7 @@ fun BitChordDesktopApp() {
         mutableStateOf(persistence.boolean(DesktopLyricsClient.KEY_SYNCED_LYRICS, true))
     }
     var lyricsBlur by remember {
-        mutableStateOf(persistence.boolean(DesktopLyricsClient.KEY_LYRICS_BLUR, true))
+        mutableStateOf(persistence.boolean(DesktopLyricsClient.KEY_LYRICS_BLUR, false))
     }
     var prioritizeSyllables by remember {
         mutableStateOf(persistence.boolean(DesktopLyricsClient.KEY_PRIORITIZE_SYLLABLES, false))
@@ -4531,10 +4531,10 @@ private fun DesktopTopBar(
                                 .fillMaxWidth()
                                 .height(46.dp)
                                 .clip(pillShape)
-                                .border(1.dp, Color.White.copy(alpha = 0.10f), pillShape)
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), pillShape)
                                 .clickable(onClick = onOpenNowPlaying),
                             shape = pillShape,
-                            color = Color(0xFF2A2A2E).copy(alpha = 0.70f),
+                            color = DesktopSurfaceRaised,
                             tonalElevation = 0.dp,
                         ) {
                             Box(Modifier.fillMaxSize()) {
@@ -5166,14 +5166,11 @@ private fun DesktopFrame(
     overlay: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    // Held out here rather than inside the constraints box.
-    val haze = remember { HazeState() }
-    // With a system material active, the window stays clear under its chrome. The app-background
-    // preference decides whether the page and side column also stay clear or retain their solid
-    // gray ground.
+    val reduceDynamicBlur by DesktopAppearanceSettings.reduceDynamicBlur.collectAsState()
+    val haze = if (reduceDynamicBlur) null else remember { HazeState() }
     val material by DesktopWindowBackdrop.active.collectAsState()
     val appBackground by DesktopWindowBackdrop.appBackground.collectAsState()
-    val glass = material != DesktopBackdrop.OFF
+    val glass = !reduceDynamicBlur && material != DesktopBackdrop.OFF
     val materialBehindApp = glass && appBackground
     val maximized by DesktopWindowMode.maximized.collectAsState()
     val roundCorners = DesktopPlatform.isMac && !maximized
@@ -5186,7 +5183,13 @@ private fun DesktopFrame(
         ) {
             // Both sources of the same state: the chrome blurs the backdrop behind it, and the
             // floating bottom bar blurs the page scrolling under it.
-            if (!glass) Box(Modifier.fillMaxSize().hazeSource(haze)) { backdrop(false) }
+            if (!glass) {
+                if (haze != null) {
+                    Box(Modifier.fillMaxSize().hazeSource(haze)) { backdrop(false) }
+                } else {
+                    Box(Modifier.fillMaxSize()) { backdrop(false) }
+                }
+            }
             Column(Modifier.fillMaxSize()) {
                 // Above everything, and outside the box the rest of the window is drawn in, because
                 // that is what a title bar is.
@@ -5213,7 +5216,9 @@ private fun DesktopFrame(
                                             },
                                         ),
                                 ) {
-                                    Box(Modifier.fillMaxSize().hazeSource(haze)) {
+                                    Box(
+                                        if (haze != null && glass) Modifier.fillMaxSize().hazeSource(haze) else Modifier.fillMaxSize()
+                                    ) {
                                         if (glass) backdrop(materialBehindApp)
                                         content(
                                             PaddingValues(
@@ -7490,7 +7495,7 @@ private fun Modifier.desktopFrosted(
     val haze = LocalDesktopHaze.current
     val reduceDynamicBlur by DesktopAppearanceSettings.reduceDynamicBlur.collectAsState()
     if (haze == null || reduceDynamicBlur) {
-        return this.background(edge.dissolve(opaque, fade) ?: SolidColor(opaque))
+        return this.background(SolidColor(opaque))
     }
     val dissolve = edge.dissolve(Color.Black, fade)
     val performanceGlass by DesktopAppearanceSettings.performanceGlass.collectAsState()

@@ -179,7 +179,7 @@ internal object DesktopPlayerHost : PlayerHost {
 internal object DesktopPlayerSettings : PlayerSettingsSource {
     private val persistence by lazy { DesktopPersistence() }
 
-    override val animatedCanvas = MutableStateFlow(true)
+    override val animatedCanvas = MutableStateFlow(false)
     override val audioQualityCellular = MutableStateFlow(AudioQuality.LOSSLESS)
     override val audioQualityWifi = MutableStateFlow(AudioQuality.LOSSLESS)
     override val canvasOverCellular = MutableStateFlow(true)

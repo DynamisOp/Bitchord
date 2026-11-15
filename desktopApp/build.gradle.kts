@@ -497,8 +497,13 @@ compose.desktop {
             it.metadata.installationPath.asFile.absolutePath
         }.get()
         mainClass = composeMainClass
-        jvmArgs("-Xms64m", "-Xmx512m")
-        jvmArgs("-XX:+UseG1GC", "-XX:G1PeriodicGCInterval=10000", "-XX:G1PeriodicGCSystemLoadThreshold=0")
+        jvmArgs("-Xms32m", "-Xmx256m")
+        jvmArgs("-XX:+UseSerialGC")
+        jvmArgs("-XX:TieredStopAtLevel=1")
+        jvmArgs("-Xss256k")
+        jvmArgs("-XX:MaxMetaspaceSize=128m")
+        jvmArgs("-XX:+ShrinkHeapInSteps=false")
+        jvmArgs("-XX:MaxHeapFreeRatio=20", "-XX:MinHeapFreeRatio=10")
         jvmArgs("-XX:+UseStringDeduplication")
         jvmArgs("-Dskiko.renderApi=OPENGL", "-Dskiko.vsync.enabled=true")
         jvmArgs("-Dbitchord.version=$appVersion")

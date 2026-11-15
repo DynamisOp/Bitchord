@@ -35,7 +35,7 @@ internal object DesktopArtworkCache {
      * large one does not decide it may hold half a gigabyte of thumbnails.
      */
     internal val budgetBytes: Long =
-        (Runtime.getRuntime().maxMemory() / 6).coerceIn(32L * 1024 * 1024, 128L * 1024 * 1024)
+        (Runtime.getRuntime().maxMemory() / 8).coerceIn(16L * 1024 * 1024, 32L * 1024 * 1024)
 
     /** Four bytes a pixel, which is what every format here decodes to. */
     private val images = DesktopByteBudgetLru<ImageBitmap>(budgetBytes) {
